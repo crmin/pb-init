@@ -55,8 +55,13 @@ go run github.com/crmin/pb-init 'github.com/crmin/test-data'
 
 ## Optional Arguments
 
-- `--migration-dir={dirName}`: migration 파일이 위치할 디렉토리 경로를 지정합니다. 주의: `--jsvm`과 함께 실행되는 경우에도 이 경로가 js migration directory에 영향을 주지 않습니다. 이 디렉토리에서는 go migration file이 관리되고 go build 결과에 포함됩니다. js migration 파일은 이 값과 무관하게 `pb_migrations` 경로에서 관리됩니다. default=`migrations`
-- `--pb-version`: pocketbase sdk version을 지정합니다. default=`latest`
+- `--migration-dir={dirName}`: migration 파일이 위치할 디렉토리 경로를 지정합니다. 이 값은 pocketbase project module directory를 기준으로 하는 하위 상대 경로여야 하며, 절대 경로, current directory reference(`.`), parent directory reference(`..`)를 포함할 수 없습니다. 주의: `--jsvm`과 함께 실행되는 경우에도 이 경로가 js migration directory에 영향을 주지 않습니다. 이 디렉토리에서는 go migration file이 관리되고 go build 결과에 포함됩니다. js migration 파일은 이 값과 무관하게 `pb_migrations` 경로에서 관리됩니다. default=`migrations`
+- `--pb-version`: pocketbase sdk version을 지정합니다. default=`latest`. `none` 값은 사용할 수 없으며 다음 에러 메시지를 stderr로 출력하고 종료합니다.
+    ```
+    Invalid --pb-version: none is not allowed. Provide a PocketBase version or omit --pb-version to use latest.
+
+    {help message}
+    ```
 
 ## Flags
 
@@ -67,6 +72,7 @@ Invalid flag: -x
 
 {help message}
 ```
+`-x`는 실제 입력된 invalid short flag 문자로 대체되어야 함. 예를 들어 `-dmz`가 전달되면 `Invalid flag: -z`를 출력해야 함.
 
 `h` 또는 `r`이 short flag 묶음에 포함되는 경우 다음 에러 메시지를 출력하고 종료:
 ```
@@ -89,11 +95,37 @@ Cannot use -h in a short flag bundle.
 - `--auto-migration` (`-m`): boilerplate code에서 auto migration 기능을 활성화합니다
 - `--jsvm` (`-j`): jsvm 기능을 활성화합니다. pb_hooks, js migrations, js runtime을 사용 할 수 있습니다
 - `--cgo-enabled`: `--docker` flag와 함께 전달되는 경우 CGO_ENABLED=1 옵션으로 build합니다.
-- `--recommend` (`-r`): `-dm`과 동일함.
+- `--recommend` (`-r`): `--docker --auto-migration`과 동일함.
+
+# Output Streams
+
+- `--help`로 요청된 help message는 stdout으로 출력하고 exit code 0으로 종료함.
+- 에러 발생 시 CLI가 생성하는 에러 메시지와 help message는 stderr로 출력하고 exit code 1로 종료함.
+- 외부 명령 실패 시 전달하는 command output은 stderr로 출력하고 exit code 1로 종료함.
+- `--force`가 제공되어 기존 go module 초기화를 계속 진행한다는 안내 메시지는 오류가 아니므로 stdout으로 출력함.
 
 # 동작
 
-1. 프로젝트 모듈 디렉토리에 pocketbase sdk 설치. `go get github.com/pocketbase/pocketbase@{pb-version}` 명령을 실행함. `{pb-version}`은 `--pb-version` flag로 전달된 값이 존재하면 해당 값으로, 존재하지 않으면 `latest`로 설정됨. 만약 설치에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stdout으로 그대로 출력하고 종료. (exit=1)
+1. 프로젝트 모듈 디렉토리에 pocketbase sdk 설치. `go get github.com/pocketbase/pocketbase@{pb-version}` 명령을 실행함. `{pb-version}`은 `--pb-version` flag로 전달된 값이 존재하면 해당 값으로, 존재하지 않으면 `latest`로 설정됨. 만약 설치에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
+    - `moduleName`이 전달되어 `go mod init` 실행에 실패한 경우에도 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
+    - `--migration-dir` 값이 절대 경로인 경우 다음 에러 메시지를 stderr로 출력하고 종료.
+        ```
+        Invalid --migration-dir: absolute paths are not allowed. Use a child path relative to the PocketBase project module directory.
+
+        {help message}
+        ```
+    - `--migration-dir` 값에 current directory reference(`.`)가 포함된 경우 다음 에러 메시지를 stderr로 출력하고 종료.
+        ```
+        Invalid --migration-dir: current directory references (`.`) are not allowed. Use a child path relative to the PocketBase project module directory.
+
+        {help message}
+        ```
+    - `--migration-dir` 값에 parent directory reference(`..`)가 포함된 경우 다음 에러 메시지를 stderr로 출력하고 종료.
+        ```
+        Invalid --migration-dir: parent directory references (`..`) are not allowed. Use a child path relative to the PocketBase project module directory.
+
+        {help message}
+        ```
 2. 지정된 flag에 따라 `templates/main.go.tmpl` 내용을 templating. 다음 template 변수가 사용됨.
     - `{{.ModulePath}}`: `go.mod` 파일에서 `module ` 뒤에 존재하는 경로로 대체되어야 함. 예를 들어 `go.mod` 파일에서 `module github.com/crmin/pb-init` 내용을 찾을 수 있을 때, `{{.ModulePath}}`는 `github.com/crmin/pb-init`로 대체되어야 함
     - `{{.MigrationDir}}`: `--migration-dir` 옵션의 값. (또는 default value `migrations`)
