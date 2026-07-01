@@ -1,0 +1,38 @@
+package main
+
+import (
+	"log/slog"
+	"os"
+
+	_ "{{.ModulePath}}/{{.MigrationDir}}"
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+{{- if .JSVMImport }}	"github.com/pocketbase/pocketbase/plugins/jsvm"{{- end}}
+)
+
+func main() {
+	logger := getLogger()
+
+	app := pocketbase.New()
+
+	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
+		Dir:         "{{.MigrationDir}}",
+		Automigrate: {{.AutoMigration}},
+	})
+
+	if err := app.Start(); err != nil {
+		logger.Error(err.Error())
+	}
+}
+
+func getLogger() *slog.Logger {
+	opts := slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelInfo,
+	}
+
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &opts)
+	logger := slog.New(jsonHandler)
+
+	return logger
+}
