@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -39,7 +40,13 @@ type Env struct {
 	Stderr      io.Writer
 	WorkDir     string
 	Templates   fs.FS
+	Runner      CommandRunner
 	CommandPath string
+}
+
+// CommandRunner runs external commands in a target directory.
+type CommandRunner interface {
+	Run(dir string, name string, args ...string) (string, error)
 }
 
 // UsageError is an error that should be printed with the help message.
@@ -86,6 +93,39 @@ func Run(args []string, env Env) int {
 	if cfg.Help {
 		fmt.Fprint(stdout, HelpMessage(command))
 		return 0
+	}
+
+	workDir := env.WorkDir
+	if workDir == "" {
+		var err error
+		workDir, err = os.Getwd()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+	}
+
+	runner := env.Runner
+	if runner == nil {
+		runner = execRunner{}
+	}
+
+	_, err = PrepareProject(cfg, ProjectEnv{
+		WorkDir: workDir,
+		Stdout:  stdout,
+		Command: command,
+		Runner:  runner,
+	})
+	if err != nil {
+		switch initErr := err.(type) {
+		case *InitError:
+			fmt.Fprint(stderr, initErr.Message)
+		case *CommandError:
+			fmt.Fprint(stderr, initErr.Output)
+		default:
+			fmt.Fprintln(stderr, err)
+		}
+		return 1
 	}
 
 	return 0
@@ -311,4 +351,13 @@ func buildInfoCommandPath() string {
 		return "github.com/crmin/pb-init"
 	}
 	return info.Main.Path
+}
+
+type execRunner struct{}
+
+func (execRunner) Run(dir string, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	return string(output), err
 }

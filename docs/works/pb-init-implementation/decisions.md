@@ -46,3 +46,6 @@
 
 - Changed: Commit 1 범위로 parser, 고정 메시지, stderr 출력 skeleton, 관련 `SPEC.md` 계약 보완을 구현.
 - Reason: 승인된 계획의 첫 번째 원자 작업 단위 완료.
+
+- Changed: Commit 2 범위로 Go module 판정, force guard, `go mod init`, `go get`, module path 읽기 구현.
+- Reason: 승인된 계획의 두 번째 원자 작업 단위 완료.

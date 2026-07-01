@@ -20,6 +20,8 @@
 - 사용자가 승인 전 추가로 `--migration-dir` current directory reference 거부와 `--pb-version=none` 금지를 명시했으므로, 두 제한은 계획 승인 대상 계약으로 반영한다.
 - `--jsvm` flag 자체도 `pb_migrations`, `pb_hooks` 빈 디렉토리를 생성해야 하며, Dockerfile copy 여부와 별개로 적용된다.
 - Commit 1 구현에서 parser, 고정 help/error message, stderr routing skeleton을 추가했고 `go test ./...`, `go run . --help`가 통과했다.
+- Commit 2 구현에서 현재 디렉토리 Go module 판정, force guard, moduleName 기반 `go mod init`, `go get`, module path 읽기를 추가했고 `go test ./...`가 통과했다.
+- `go run . --pb-version=none` smoke에서 pb-init 오류와 help는 stderr로 출력되며 stdout은 비어 있었다. Go tool은 프로그램 exit 1을 감싸 `exit status 1`을 stderr에 추가로 출력한다.
 
 ## 재사용 키워드
 
