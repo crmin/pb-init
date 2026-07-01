@@ -56,3 +56,6 @@
 
 - Changed: Commit 3 범위로 템플릿 렌더링, JSVM 디렉토리 생성, Dockerfile JSVM asset copy, generated project build 검증 완료.
 - Reason: 승인된 계획의 세 번째 원자 작업 단위 완료.
+
+- Changed: Commit 4 범위로 영어 README 작성과 최종 검증 완료.
+- Reason: 승인된 계획의 네 번째 원자 작업 단위 완료.

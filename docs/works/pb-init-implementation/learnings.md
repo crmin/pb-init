@@ -25,6 +25,7 @@
 - Commit 3 smoke 중 `--jsvm` generated project는 `go get github.com/pocketbase/pocketbase@latest`만으로 `plugins/jsvm` transitive dependency의 go.sum 항목이 부족해 `go build ./...`가 실패했다. 해결을 위해 `--jsvm`일 때 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가 실행한다.
 - Commit 3 재검증에서 binary smoke로 `--docker -mj --migration-dir=internal/migrations` 프로젝트 생성, `pb_migrations`/`pb_hooks` 생성, Dockerfile JSVM copy 라인, generated project `go build ./...`를 확인했다.
 - Commit 3 current directory mode smoke에서 빈 Go module에 초기화 후 `main.go`, `migrations/init.go`, `.gitignore` 생성과 generated project `go build ./...`를 확인했다.
+- Commit 4에서 영어 README를 작성했고 `go test ./...`, `go build ./...`, `go run . --help`, invalid `--migration-dir=.` stderr smoke, moduleName project generation smoke, current directory mode smoke가 모두 통과했다.
 
 ## 재사용 키워드
 

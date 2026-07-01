@@ -476,8 +476,8 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
 - [x] Commit 1 구현 및 즉시 commit
 - [x] Commit 2 구현 및 즉시 commit
 - [x] Commit 3 구현 및 즉시 commit
-- [ ] Commit 4 구현 및 즉시 commit
-- [ ] 최종 상태 보고
+- [x] Commit 4 구현 및 즉시 commit
+- [x] 최종 상태 보고
 
 ## Subagent 검토 상태
 
