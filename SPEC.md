@@ -107,6 +107,7 @@ Cannot use -h in a short flag bundle.
 # 동작
 
 1. 프로젝트 모듈 디렉토리에 pocketbase sdk 설치. `go get github.com/pocketbase/pocketbase@{pb-version}` 명령을 실행함. `{pb-version}`은 `--pb-version` flag로 전달된 값이 존재하면 해당 값으로, 존재하지 않으면 `latest`로 설정됨. 만약 설치에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
+    - `--jsvm` flag가 전달된 경우 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}` 명령을 추가로 실행해 jsvm plugin의 transitive dependency가 generated project의 `go.sum`에 포함되도록 함. 만약 설치에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
     - `moduleName`이 전달되어 `go mod init` 실행에 실패한 경우에도 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
     - `--migration-dir` 값이 절대 경로인 경우 다음 에러 메시지를 stderr로 출력하고 종료.
         ```
@@ -134,12 +135,25 @@ Cannot use -h in a short flag bundle.
 3. `--migration-dir` 디렉토리를 생성. 이 값은 slash 등으로 구분된 중첩 디렉토리 형태일 수 있음 (예를 들어 다음 값을 가질 수 있음: `migrations`, `internal/migrations`) 따라서 exist=ok 조건으로 중첩 디렉토리를 모두 생성해야 함
 4. migration directory 경로에 `init.go` 파일을 생성. `templates/migration_init.go.tmpl` 파일의 내용을 templating 해서 채워넣음. 다음 template 변수가 사용됨.
     - `{{.MigrationDir}}`: `--migration-dir` 옵션의 값. (또는 default value `migrations`)
-5. `--docker` flag가 전달된 경우 프로젝트 모듈 디렉토리에 `Dockerfile`, `.dockerignore` 생성. 내용은 각각 `templates/Dockerfile.tmpl`, `templates/.dockerignore.tmpl` 파일을 templating해서 사용.
+    - `{{.MigrationPackage}}`: `--migration-dir`의 마지막 path 요소를 Go package identifier로 변환한 값. 예를 들어 `internal/migrations`는 `migrations`가 됨. 이 값은 `init.go`의 package 선언에 사용되며, 중첩 migration directory를 유효한 Go code로 생성하기 위해 `{{.MigrationDir}}` package 선언을 대체함.
+5. `--jsvm` flag가 전달된 경우 프로젝트 모듈 디렉토리에 `pb_migrations`, `pb_hooks` 빈 디렉토리를 exist=ok 조건으로 생성.
+6. `--docker` flag가 전달된 경우 프로젝트 모듈 디렉토리에 `Dockerfile`, `.dockerignore` 생성. 내용은 각각 `templates/Dockerfile.tmpl`, `templates/.dockerignore.tmpl` 파일을 templating해서 사용.
     - `Dockerfile.tmpl`에서 사용되는 template variables
         - `{{.CgoEnabled}}`: `--cgo-enabled` flag가 전달된 경우 `"1"`, 아니면 `"0"`으로 설정. templating 후 정수 형태의 문자로 설정되어야 함. e.g. `CGO_ENABLED={{.CgoEnabled}}` -> `CGO_ENABLED=1`
+        - `{{.JSVMAssets}}`: `--jsvm` flag가 전달된 경우 true, 아니면 false로 설정.
+            - true인 경우 builder stage에서 다음 라인을 렌더링해 JSVM 기본 디렉토리가 없더라도 final stage copy가 실패하지 않게 함.
+                ```Dockerfile
+                RUN mkdir -p pb_migrations pb_hooks
+                ```
+            - true인 경우 final stage에 다음 라인을 렌더링해 JS migration directory와 JS hook directory를 image root에 포함함.
+                ```Dockerfile
+                COPY --from=builder /go/src/app/pb_migrations /pb_migrations
+                COPY --from=builder /go/src/app/pb_hooks /pb_hooks
+                ```
+            - false인 경우 위 `RUN mkdir -p ...`와 `COPY` 라인을 렌더링하지 않음.
     - `.dockerignore.tmpl`에서 사용되는 template variables
         - `{{.BinaryName}}`: module path에서 가장 마지막 경로 요소. 예를 들어 module path가 `github.com/username/app`이라면 `app`이 됨. 또는 module path가 경로 구분 없는 `test`라면 `test`가 됨. 만약 이 값이 `pocketbase`라면 이미 존재하는 값이므로 `{{.BinaryName}}`을 empty string으로 설정
-6. 프로젝트 모듈 디렉토리에 `.gitignore` 파일을 생성. 내용은 `templates/.gitignore.tmpl` 템플릿을 사용. `.dockerignore.tmpl`과 같은 template variable을 사용함
+7. 프로젝트 모듈 디렉토리에 `.gitignore` 파일을 생성. 내용은 `templates/.gitignore.tmpl` 템플릿을 사용. `.dockerignore.tmpl`과 같은 template variable을 사용함
 
 # Build
 

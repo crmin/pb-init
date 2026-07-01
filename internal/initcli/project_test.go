@@ -209,6 +209,22 @@ func TestGoGetFailureWritesCommandOutputToStderr(t *testing.T) {
 	}
 }
 
+func TestJSVMRunsPluginGoGetForTransitiveDependencies(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
+	runner := &fakeRunner{}
+
+	code, _, stderr := runForProject([]string{"--jsvm", "--pb-version=v0.39.5"}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	assertCalls(t, runner.calls, []commandCall{
+		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@v0.39.5"}},
+		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase/plugins/jsvm@v0.39.5"}},
+	})
+}
+
 func runForProject(args []string, dir string, runner *fakeRunner) (int, string, string) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -216,6 +232,7 @@ func runForProject(args []string, dir string, runner *fakeRunner) (int, string, 
 		Stdout:      &stdout,
 		Stderr:      &stderr,
 		WorkDir:     dir,
+		Templates:   testTemplateFS(),
 		Runner:      runner,
 		CommandPath: "example.test/pb-init",
 	})

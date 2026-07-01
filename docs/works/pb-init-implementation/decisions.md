@@ -13,6 +13,7 @@
 - `--pb-version=none` 금지 - 사용자 추가 요청에 따라 정확히 `none` 값은 `go get`에 전달하지 않고 고정 오류 메시지로 종료한다.
 - 에러 출력 채널 고정 - `--help`는 stdout, 에러 메시지와 외부 명령 실패 output은 stderr로 출력한다. `go get` 실패 출력은 기존 `SPEC.md`의 stdout 계약을 stderr로 변경하고, `go mod init` 실패 출력은 새 stderr 계약으로 추가한다.
 - JSVM 기본 디렉토리 생성 - `--jsvm` 전달 시 PocketBase project module directory에 `pb_migrations`, `pb_hooks` 빈 디렉토리를 생성한다.
+- JSVM plugin dependency 보강 - `--jsvm` 전달 시 generated project build를 위해 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가 실행한다.
 - JSVM Docker asset 포함 - `--jsvm --docker` 조합에서 Dockerfile final stage에 `pb_migrations`, `pb_hooks`를 copy한다.
 - `MigrationPackage`는 SPEC 보완과 함께 추가 - 중첩 migration directory를 유효한 Go package로 생성하기 위해 template variable을 추가하되 같은 commit에서 `SPEC.md`를 보완한다.
 
@@ -49,3 +50,9 @@
 
 - Changed: Commit 2 범위로 Go module 판정, force guard, `go mod init`, `go get`, module path 읽기 구현.
 - Reason: 승인된 계획의 두 번째 원자 작업 단위 완료.
+
+- Changed: Commit 3 smoke 실패 결과에 따라 `--jsvm` 시 jsvm plugin dependency를 추가 `go get`하도록 계획과 구현 범위를 보완.
+- Reason: generated project가 `--jsvm` import를 포함할 때 즉시 `go build ./...`가 통과해야 하기 때문.
+
+- Changed: Commit 3 범위로 템플릿 렌더링, JSVM 디렉토리 생성, Dockerfile JSVM asset copy, generated project build 검증 완료.
+- Reason: 승인된 계획의 세 번째 원자 작업 단위 완료.

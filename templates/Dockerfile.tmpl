@@ -5,7 +5,8 @@ COPY go.mod .
 COPY go.sum* .
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED={{.CgoEnabled}} go build -o pocketbase .
+{{ if .JSVMAssets }}RUN mkdir -p pb_migrations pb_hooks
+{{ end }}RUN CGO_ENABLED={{.CgoEnabled}} go build -o pocketbase .
 
 FROM debian:trixie-slim
 
@@ -14,7 +15,9 @@ RUN apt update && apt install --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /go/src/app/pocketbase /
-ENV PATH=$PATH:/
+{{ if .JSVMAssets }}COPY --from=builder /go/src/app/pb_migrations /pb_migrations
+COPY --from=builder /go/src/app/pb_hooks /pb_hooks
+{{ end }}ENV PATH=$PATH:/
 
 ENTRYPOINT ["/pocketbase"]
 CMD ["serve", "--http", "0.0.0.0:8090"]

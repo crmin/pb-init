@@ -182,6 +182,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
 - `--migration-dir`는 PocketBase project module directory 기준 child relative path만 허용한다. 절대 경로는 "Invalid --migration-dir: absolute paths are not allowed. Use a child path relative to the PocketBase project module directory.", path component 중 `.`가 포함된 값은 "Invalid --migration-dir: current directory references (`.`) are not allowed. Use a child path relative to the PocketBase project module directory.", path component 중 `..`가 포함된 값은 "Invalid --migration-dir: parent directory references (`..`) are not allowed. Use a child path relative to the PocketBase project module directory."로 실패한다.
 - migration directory가 `internal/migrations`처럼 중첩 경로일 수 있으므로, migration `init.go`의 package name은 directory base를 Go package identifier로 변환해서 사용한다. 이를 위해 `templates/migration_init.go.tmpl`에는 `{{.MigrationPackage}}` 변수를 추가하고, `SPEC.md`도 이 추가 template variable을 반영하도록 보완한다. 이는 중첩 directory 지원을 실제 Go code로 성립시키기 위한 명세 보완이다.
 - `--jsvm`은 구현 시점의 `go get github.com/pocketbase/pocketbase@latest` 결과에 맞는 `jsvm.MustRegister(app, jsvm.Config{})` API로 실제 JS hooks, JS migrations, JS runtime을 활성화한다. 계획 조사 시점의 latest는 `v0.39.5`였지만 구현은 특정 버전에 pin하지 않는다. `--migration-dir`는 Go migration directory에만 사용하고 JS migrations는 PocketBase 기본값인 `pb_migrations`를 따른다.
+- `--jsvm`은 generated project가 즉시 빌드될 수 있도록 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가로 실행한다. 실제 smoke에서 `go get github.com/pocketbase/pocketbase@latest`만으로는 jsvm plugin의 transitive dependency go.sum 항목이 부족해 generated project build가 실패함을 확인했기 때문이다.
 - `--jsvm`이 전달되면 PocketBase project module directory에 `pb_migrations`와 `pb_hooks` 빈 디렉토리를 생성한다. 이미 존재하면 유지한다.
 - `--jsvm --docker` 조합에서는 generated Dockerfile의 final stage에 JS migration directory `pb_migrations`와 JS hooks directory `pb_hooks`가 포함되어야 한다. `pb_hook`이 아니라 PocketBase 기본 directory 이름인 `pb_hooks`를 사용한다.
 
@@ -225,6 +226,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
   - `moduleName` 기반 프로젝트 디렉토리 결정 및 `go mod init` 실행.
   - current directory 초기화 시 `--force` 필요 여부 판단.
   - `go get github.com/pocketbase/pocketbase@{pb-version}` 실행.
+  - `--jsvm`일 때 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}` 추가 실행.
   - `go.mod`에서 module path 읽기.
 - `internal/initcli/render.go`
   - embed FS에서 템플릿 로드 및 렌더링.
@@ -234,6 +236,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
   - `BinaryName`, `CgoEnabled`, `MigrationPackage`, `AutoMigration`, `JSVMImport`, `JSVMAssets` 값 계산.
 - `internal/initcli/*_test.go`
   - 인자 파싱, module 판정, force 동작, command runner 호출, 템플릿 렌더링, 파일 생성 테스트 추가.
+  - `--jsvm`일 때 jsvm plugin dependency를 추가 `go get`하는 테스트 추가.
 
 ### 템플릿
 
@@ -330,6 +333,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
 - `--migration-dir`가 절대 경로이거나 `.` 또는 `..` path component를 포함하면 고정 오류 메시지를 stderr에 출력하고 종료한다.
 - `--docker`가 있으면 `Dockerfile`과 `.dockerignore`를 생성하고, `--cgo-enabled`에 따라 `CGO_ENABLED=0` 또는 `CGO_ENABLED=1`을 렌더링한다.
 - `--jsvm`이 있으면 PocketBase project module directory에 `pb_migrations`, `pb_hooks` 빈 디렉토리를 생성한다.
+- `--jsvm`이 있으면 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가 실행해 generated project의 jsvm import가 바로 빌드되도록 한다.
 - `--docker --jsvm`이 있으면 generated Dockerfile final stage에 `/pb_migrations`, `/pb_hooks`가 포함된다. `--jsvm`이 없으면 해당 directory copy는 렌더링하지 않는다.
 - `.gitignore`는 항상 생성한다.
 
@@ -337,6 +341,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
 
 - CLI는 대상 프로젝트 디렉토리에 `main.go`, migration `init.go`, `.gitignore`, 선택적 Docker 파일을 쓴다. 기존 파일이 있으면 덮어쓸 수 있다.
 - `go get github.com/pocketbase/pocketbase@latest`는 네트워크와 현재 시점의 PocketBase 최신 버전에 의존한다.
+- `--jsvm`은 추가 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}` 명령을 실행하므로 네트워크 호출이 하나 더 발생한다.
 - PocketBase 최신 API가 바뀌면 `--jsvm` 생성 코드가 실패할 수 있으므로 구현 완료 시 latest 기준 generated project build를 검증한다.
 - `--migration-dir` 절대 경로, `.` path component, `..` path component는 target module 외부 또는 module root 자체를 migration directory로 쓰는 상황을 막기 위해 CLI validation 단계에서 거부한다.
 - package name sanitization 때문에 directory base와 실제 package identifier가 다를 수 있다. Go에서는 정상적인 패턴이지만 README에 nested/custom migration directory 사용 시 generated package name이 자동 보정된다는 점을 언급한다.
@@ -409,7 +414,9 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
 - 변경/작성 파일:
   - `SPEC.md`
   - `internal/initcli/cli.go`
+  - `internal/initcli/project.go`
   - `internal/initcli/render.go`
+  - `internal/initcli/project_test.go`
   - `internal/initcli/render_test.go`
   - `templates/main.go.tmpl`
   - `templates/migration_init.go.tmpl`
@@ -423,6 +430,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
   - `docs/works/pb-init-implementation/problems.md`
 - 구체 내용:
   - nested migration directory 지원을 위해 `SPEC.md`에 `MigrationPackage` template variable 설명 보완.
+  - `--jsvm` generated build를 위해 jsvm plugin dependency 추가 `go get` 로직과 테스트 보완.
   - `--jsvm` 시 `pb_migrations`, `pb_hooks` 빈 디렉토리 생성 계약을 `SPEC.md`에 보완.
   - `--jsvm --docker` 조합에서 `pb_migrations`, `pb_hooks`를 final image에 포함하도록 `SPEC.md`와 `Dockerfile.tmpl` 보완.
   - 템플릿 렌더링, nested migration directory 생성, Docker/.dockerignore/.gitignore 생성.
@@ -467,7 +475,7 @@ Invalid --migration-dir: parent directory references (`..`) are not allowed. Use
 - [ ] 사용자 승인 받기
 - [x] Commit 1 구현 및 즉시 commit
 - [x] Commit 2 구현 및 즉시 commit
-- [ ] Commit 3 구현 및 즉시 commit
+- [x] Commit 3 구현 및 즉시 commit
 - [ ] Commit 4 구현 및 즉시 commit
 - [ ] 최종 상태 보고
 

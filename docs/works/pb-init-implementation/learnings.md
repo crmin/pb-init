@@ -22,6 +22,9 @@
 - Commit 1 구현에서 parser, 고정 help/error message, stderr routing skeleton을 추가했고 `go test ./...`, `go run . --help`가 통과했다.
 - Commit 2 구현에서 현재 디렉토리 Go module 판정, force guard, moduleName 기반 `go mod init`, `go get`, module path 읽기를 추가했고 `go test ./...`가 통과했다.
 - `go run . --pb-version=none` smoke에서 pb-init 오류와 help는 stderr로 출력되며 stdout은 비어 있었다. Go tool은 프로그램 exit 1을 감싸 `exit status 1`을 stderr에 추가로 출력한다.
+- Commit 3 smoke 중 `--jsvm` generated project는 `go get github.com/pocketbase/pocketbase@latest`만으로 `plugins/jsvm` transitive dependency의 go.sum 항목이 부족해 `go build ./...`가 실패했다. 해결을 위해 `--jsvm`일 때 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가 실행한다.
+- Commit 3 재검증에서 binary smoke로 `--docker -mj --migration-dir=internal/migrations` 프로젝트 생성, `pb_migrations`/`pb_hooks` 생성, Dockerfile JSVM copy 라인, generated project `go build ./...`를 확인했다.
+- Commit 3 current directory mode smoke에서 빈 Go module에 초기화 후 `main.go`, `migrations/init.go`, `.gitignore` 생성과 generated project `go build ./...`를 확인했다.
 
 ## 재사용 키워드
 

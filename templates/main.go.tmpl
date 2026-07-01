@@ -6,8 +6,8 @@ import (
 
 	_ "{{.ModulePath}}/{{.MigrationDir}}"
 	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/plugins/migratecmd"
-{{- if .JSVMImport }}	"github.com/pocketbase/pocketbase/plugins/jsvm"{{- end}}
+{{ if .JSVMImport }}	"github.com/pocketbase/pocketbase/plugins/jsvm"
+{{ end }}	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 )
 
 func main() {
@@ -15,6 +15,9 @@ func main() {
 
 	app := pocketbase.New()
 
+{{ if .JSVMImport }}	jsvm.MustRegister(app, jsvm.Config{})
+
+{{ end }}
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
 		Dir:         "{{.MigrationDir}}",
 		Automigrate: {{.AutoMigration}},

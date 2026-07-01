@@ -23,3 +23,9 @@
 - 5차 subagent 검토가 APPROVE를 반환했다.
   - 확인: `--pb-version=none` 금지, `--migration-dir`의 `.`, `..`, absolute path 금지, `--jsvm` 디렉토리 생성 계획, 기존 stderr/Dockerfile/README/commit 계획이 모두 cover되었다.
   - 후속: 구현 단계에서 `SPEC.md:96`의 기존 stdout 문구를 stderr 문구로 완전히 교체한다.
+- Commit 3 smoke에서 `--jsvm` generated project build가 jsvm transitive dependency go.sum 항목 누락으로 실패했다.
+  - 원인: `go get github.com/pocketbase/pocketbase@latest`만으로는 `github.com/pocketbase/pocketbase/plugins/jsvm` import에 필요한 optional dependency go.sum 항목이 채워지지 않음.
+  - 해결: `--jsvm`일 때 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가 실행하도록 구현.
+- Commit 3 smoke에서 `go run /Users/crmin/workspace/crmin/pb-init ...`를 임시 디렉토리에서 직접 실행하면 Go tool이 현재 디렉토리의 module을 찾지 못해 실패했다.
+  - 원인: 로컬 absolute source path 방식은 임시 디렉토리의 module context 없이 실행되어 Go tool이 source module을 해석하지 못함.
+  - 해결: 같은 실패를 반복하지 않고 로컬 binary를 빌드한 뒤 임시 디렉토리에서 실행해 생성 결과와 generated project build를 검증했다.

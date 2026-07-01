@@ -64,6 +64,11 @@ func PrepareProject(cfg Config, env ProjectEnv) (Project, error) {
 	if err := runGoGet(project.Dir, cfg.PBVersion, env.Runner); err != nil {
 		return Project{}, err
 	}
+	if cfg.JSVM {
+		if err := runGoGetPackage(project.Dir, "github.com/pocketbase/pocketbase/plugins/jsvm", cfg.PBVersion, env.Runner); err != nil {
+			return Project{}, err
+		}
+	}
 
 	modulePath, err := ReadModulePath(project.Dir)
 	if err != nil {
@@ -178,7 +183,11 @@ func currentModuleRequiresForce(dir string) (bool, error) {
 }
 
 func runGoGet(dir string, version string, runner CommandRunner) error {
-	return runCommand(dir, runner, "go", "get", "github.com/pocketbase/pocketbase@"+version)
+	return runGoGetPackage(dir, "github.com/pocketbase/pocketbase", version, runner)
+}
+
+func runGoGetPackage(dir string, pkg string, version string, runner CommandRunner) error {
+	return runCommand(dir, runner, "go", "get", pkg+"@"+version)
 }
 
 func runCommand(dir string, runner CommandRunner, name string, args ...string) error {

@@ -110,7 +110,7 @@ func Run(args []string, env Env) int {
 		runner = execRunner{}
 	}
 
-	_, err = PrepareProject(cfg, ProjectEnv{
+	project, err := PrepareProject(cfg, ProjectEnv{
 		WorkDir: workDir,
 		Stdout:  stdout,
 		Command: command,
@@ -125,6 +125,11 @@ func Run(args []string, env Env) int {
 		default:
 			fmt.Fprintln(stderr, err)
 		}
+		return 1
+	}
+
+	if err := RenderProject(project, cfg, env.Templates); err != nil {
+		fmt.Fprintln(stderr, err)
 		return 1
 	}
 
