@@ -97,6 +97,7 @@ Cannot use -h in a short flag bundle.
 - `--auto-migration` (`-m`): boilerplate code에서 auto migration 기능을 활성화합니다
 - `--jsvm` (`-j`): jsvm 기능을 활성화합니다. pb_hooks, js migrations, js runtime을 사용 할 수 있습니다
 - `--cgo-enabled`: `--docker` flag와 함께 전달되는 경우 CGO_ENABLED=1 옵션으로 build합니다.
+- `--just`: 프로젝트 모듈 디렉토리 root에 `justfile`을 생성합니다.
 - `--recommend` (`-r`): `--docker --auto-migration`과 동일함.
 
 # Output Streams
@@ -156,9 +157,42 @@ Cannot use -h in a short flag bundle.
             - false인 경우 위 `RUN mkdir -p ...`와 `COPY` 라인을 렌더링하지 않음.
     - `.dockerignore.tmpl`에서 사용되는 template variables
         - `{{.BinaryName}}`: module path에서 가장 마지막 경로 요소. 예를 들어 module path가 `github.com/username/app`이라면 `app`이 됨. 또는 module path가 경로 구분 없는 `test`라면 `test`가 됨. 만약 이 값이 `pocketbase`라면 이미 존재하는 값이므로 `{{.BinaryName}}`을 empty string으로 설정
-7. 프로젝트 모듈 디렉토리에 `.gitignore` 파일을 생성. 내용은 `templates/.gitignore.tmpl` 템플릿을 사용. `.dockerignore.tmpl`과 같은 template variable을 사용함
-8. 프로젝트 파일 생성 이후 프로젝트 모듈 디렉토리에서 `go mod tidy`를 실행함. 이 단계는 pocketbase sdk 설치 이후 수행되며 generated Go file의 import가 반영된 상태에서 실행되어야 함. 만약 실행에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
-9. 실행 단계에 따라 다음과 같은 형태의 진행 로그를 stdout으로 출력함. `--jsvm` 관련 로그와 `go mod init` 로그는 해당 단계가 실제로 실행되는 경우에만 출력함.
+        - `{{.Justfile}}`: `--just` flag가 전달된 경우 true, 아니면 false로 설정. true인 경우 `.dockerignore`에 `justfile` 항목을 렌더링하고, false인 경우 렌더링하지 않음. `--docker` flag가 없으면 `.dockerignore` 자체를 생성하지 않으므로 `--just` flag가 전달되어도 `.dockerignore`는 생성되지 않음.
+7. `--just` flag가 전달된 경우 프로젝트 모듈 디렉토리 root에 `justfile` 파일을 생성. 내용은 `templates/justfile.tmpl` 템플릿을 사용.
+    - justfile 최상단에는 bash 환경 기준 실행을 위해 `#!/usr/bin/env bash` shebang을 추가함.
+    - `set positional-arguments := true`를 사용해 variadic recipe argument를 bash script의 positional argument로 전달함.
+    - 모든 recipe 내부 command는 실행 중 just가 실제 실행 명령을 출력하지 않도록 작성되어야 함. 단, command가 직접 출력하는 stdout과 stderr는 그대로 표시되어야 함.
+    - `just` 또는 `just default`: `[private]`로 숨겨진 default recipe가 `just --list`를 실행함. default recipe 자체는 `just --list` 결과에 표시되지 않아야 함.
+    - `just serve [args...]`: `go run . serve [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `go run . serve`의 argument로 전달함.
+    - `just migrate [args...]`: `./pocketbase migrate collections [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `./pocketbase migrate collections`의 argument로 전달함.
+    - `just snapshot [-y] [-- args...]`: `printf 'y\n' | ./pocketbase migrate collections [args...]`를 실행해 collection snapshot을 생성한 뒤 `migrations` 디렉토리의 최신 snapshot 파일만 유지함.
+        - `--` 앞의 `-y`는 recipe 전용 flag로 처리해 삭제 확인 prompt를 생략함.
+        - `--` 뒤에 전달된 값은 `-y`라도 `./pocketbase migrate collections`의 argument로 전달함.
+        - `migrations` 디렉토리가 없으면 collection snapshot 생성 이후 추가 삭제 작업 없이 정상 종료함.
+        - `migrations` 디렉토리의 `*.go` 파일 중 `{unix_timestamp_in_sec}_{action_description}.go` 형식이며 `_` 앞 첫 번째 chunk가 숫자인 파일을 timestamp migration file로 판단함.
+        - timestamp가 가장 큰 파일 하나를 최신 migration file로 판단함. timestamp가 같은 파일이 여러 개면 파일명 정렬 기준으로 마지막으로 처리된 파일을 최신 파일로 판단함.
+        - 최신 migration file을 제외한 `migrations/*.go` 파일은 모두 삭제 대상임. 따라서 `init.go`와 timestamp 형식이 아닌 `.go` 파일도 삭제 대상임.
+        - `-y` flag가 설정되지 않은 경우 삭제 대상 파일 목록을 출력하고 `The following files will be deleted. Continue? (Y/n): ` prompt를 표시함.
+            - prompt 입력값은 case insensitive.
+            - `y`가 입력된 경우 해당 파일을 삭제하고 진행함.
+            - `n`이 입력된 경우 `Collection snapshot creation cancelled by user.`를 출력하고 정상 종료함. (exit=0)
+            - 다른 값 또는 빈 값이 입력된 경우 prompt를 다시 출력하고 다시 입력 받음.
+    - `just upgrade [version]`: PocketBase Go module dependency를 upgrade함.
+        - `version`이 지정되지 않은 경우 `go get -u github.com/pocketbase/pocketbase`를 실행함.
+        - `version`이 `latest`인 경우 `go get -u github.com/pocketbase/pocketbase@latest`를 실행함.
+        - `version`이 `none`인 경우 `Invalid version: "none" is not allowed.`를 stderr로 출력하고 exit=1로 종료함.
+        - `version`이 `v`로 시작하는 경우 `go get -u github.com/pocketbase/pocketbase@{version}`를 실행함.
+        - `version`이 숫자(`0-9`)로 시작하는 경우 `go get -u github.com/pocketbase/pocketbase@v{version}`를 실행함.
+        - 그 외 값은 다음 메시지를 stderr로 출력하고 exit=1로 종료함.
+            ```
+            Unsupported version format. Supported values are:
+                - latest
+                - a.b.c (e.g. 0.39.5)
+                - va.b.c (e.g. v0.39.5)
+            ```
+8. 프로젝트 모듈 디렉토리에 `.gitignore` 파일을 생성. 내용은 `templates/.gitignore.tmpl` 템플릿을 사용. `.dockerignore.tmpl`과 같은 template variable을 사용함
+9. 프로젝트 파일 생성 이후 프로젝트 모듈 디렉토리에서 `go mod tidy`를 실행함. 이 단계는 pocketbase sdk 설치 이후 수행되며 generated Go file의 import가 반영된 상태에서 실행되어야 함. 만약 실행에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
+10. 실행 단계에 따라 다음과 같은 형태의 진행 로그를 stdout으로 출력함. `--jsvm` 관련 로그와 `go mod init` 로그는 해당 단계가 실제로 실행되는 경우에만 출력함.
     ```text
     Using Go module directory: {module abs path}
     Preparing module directory: {module abs path}
@@ -168,7 +202,7 @@ Cannot use -h in a short flag bundle.
     Generating PocketBase starter files
     Tidying Go module: go mod tidy
     ```
-10. 설정이 완료되면 프로젝트 모듈 디렉토리 경로와 다음 실행 단계를 stdout으로 출력함. 색상 출력은 `github.com/fatih/color`를 사용함.
+11. 설정이 완료되면 프로젝트 모듈 디렉토리 경로와 다음 실행 단계를 stdout으로 출력함. 색상 출력은 `github.com/fatih/color`를 사용함.
     - `moduleName`이 전달되지 않은 경우:
         ```text
         PocketBase project initialized successfully: {module abs path}

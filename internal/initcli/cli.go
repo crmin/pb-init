@@ -34,6 +34,7 @@ type Config struct {
 	AutoMigration bool
 	JSVM          bool
 	CgoEnabled    bool
+	Just          bool
 }
 
 // Env contains process dependencies used by Run.
@@ -210,6 +211,8 @@ Flags:
     Enable PocketBase JS hooks, JS migrations, and JS runtime support.
   --cgo-enabled
     Use CGO_ENABLED=1 in the generated Dockerfile when --docker is enabled.
+  --just
+    Generate a justfile with common PocketBase project commands.
   -r, --recommend
     Equivalent to --docker --auto-migration.
 `, command)
@@ -233,6 +236,8 @@ func parseLongFlag(args []string, index int, cfg *Config) (int, error) {
 		cfg.JSVM = true
 	case "--cgo-enabled":
 		cfg.CgoEnabled = true
+	case "--just":
+		cfg.Just = true
 	case "--recommend":
 		applyRecommend(cfg)
 	case "--migration-dir":

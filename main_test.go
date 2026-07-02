@@ -9,6 +9,7 @@ func TestEmbeddedTemplatesIncludeAllRequiredFiles(t *testing.T) {
 		"templates/Dockerfile.tmpl",
 		"templates/.dockerignore.tmpl",
 		"templates/.gitignore.tmpl",
+		"templates/justfile.tmpl",
 	} {
 		if _, err := templateFS.ReadFile(name); err != nil {
 			t.Fatalf("embedded template %s missing: %v", name, err)

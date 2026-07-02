@@ -55,6 +55,16 @@ func TestParseRecommendExpandsDockerAutoMigration(t *testing.T) {
 	}
 }
 
+func TestParseJustFlag(t *testing.T) {
+	cfg, err := ParseArgs([]string{"--just"})
+	if err != nil {
+		t.Fatalf("ParseArgs returned error: %v", err)
+	}
+	if !cfg.Just {
+		t.Fatal("expected --just to enable justfile generation")
+	}
+}
+
 func TestParseOptionsAcceptEqualsAndSeparateValues(t *testing.T) {
 	cfg, err := ParseArgs([]string{"--migration-dir=internal/migrations", "--pb-version", "v0.39.5"})
 	if err != nil {
@@ -121,6 +131,16 @@ func TestHelpMessageClarifiesMigrationDirWithJSVM(t *testing.T) {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help missing %q", want)
 		}
+	}
+}
+
+func TestHelpMessageDocumentsJustFlag(t *testing.T) {
+	help := HelpMessage("github.com/crmin/pb-init")
+	if !strings.Contains(help, "--just") {
+		t.Fatalf("help missing --just flag:\n%s", help)
+	}
+	if !strings.Contains(help, "Generate a justfile with common PocketBase project commands.") {
+		t.Fatalf("help missing just flag description:\n%s", help)
 	}
 }
 

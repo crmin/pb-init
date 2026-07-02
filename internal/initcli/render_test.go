@@ -3,6 +3,7 @@ package initcli
 import (
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,6 +137,97 @@ func TestRenderBinaryNamePocketBaseIsOmitted(t *testing.T) {
 	gitignore := readFile(t, dir, ".gitignore")
 	if strings.Count(gitignore, "\npocketbase\n") != 1 {
 		t.Fatalf("expected no duplicate pocketbase binary name:\n%s", gitignore)
+	}
+}
+
+func TestRenderWritesJustfileWhenJustEnabled(t *testing.T) {
+	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir, Just: true})
+
+	justfile := readFile(t, dir, "justfile")
+	for _, want := range []string{
+		"set positional-arguments := true",
+		"[private]\ndefault:",
+		"serve *args:",
+		"migrate *args:",
+		"snapshot *args:",
+		"upgrade version=\"\":",
+		"The following files will be deleted. Continue? (Y/n): ",
+	} {
+		if !strings.Contains(justfile, want) {
+			t.Fatalf("justfile missing %q:\n%s", want, justfile)
+		}
+	}
+}
+
+func TestRenderSkipsJustfileWhenJustDisabled(t *testing.T) {
+	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir})
+
+	_, err := os.Stat(filepath.Join(dir, "justfile"))
+	if !os.IsNotExist(err) {
+		t.Fatalf("expected justfile to be absent, err=%v", err)
+	}
+}
+
+func TestRenderDockerignoreIncludesJustfileOnlyWhenJustEnabled(t *testing.T) {
+	withJust := renderFixture(t, Config{
+		MigrationDir: defaultMigrationDir,
+		Docker:       true,
+		Just:         true,
+	})
+	dockerignore := readFile(t, withJust, ".dockerignore")
+	if !strings.Contains(dockerignore, "\njustfile\n") {
+		t.Fatalf(".dockerignore missing justfile:\n%s", dockerignore)
+	}
+
+	withoutJust := renderFixture(t, Config{
+		MigrationDir: defaultMigrationDir,
+		Docker:       true,
+	})
+	dockerignore = readFile(t, withoutJust, ".dockerignore")
+	if strings.Contains(dockerignore, "justfile") {
+		t.Fatalf(".dockerignore should not contain justfile:\n%s", dockerignore)
+	}
+}
+
+func TestRenderedJustfileListsRecipesAndHidesDefault(t *testing.T) {
+	if _, err := exec.LookPath("just"); err != nil {
+		t.Skip("just is not installed")
+	}
+	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir, Just: true})
+
+	cmd := exec.Command("just", "--justfile", filepath.Join(dir, "justfile"), "--working-directory", dir, "--list")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("just --list failed: %v\n%s", err, output)
+	}
+	got := string(output)
+	for _, want := range []string{"serve *args", "migrate *args", "snapshot *args", "upgrade version"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("just --list missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "default") {
+		t.Fatalf("just --list should hide default recipe:\n%s", got)
+	}
+}
+
+func TestRenderedJustfileSyntaxSupportsDryRun(t *testing.T) {
+	if _, err := exec.LookPath("just"); err != nil {
+		t.Skip("just is not installed")
+	}
+	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir, Just: true})
+
+	for _, args := range [][]string{
+		{"--dry-run", "serve", "--", "--http", "127.0.0.1:8090"},
+		{"--dry-run", "migrate", "--", "--dir", "custom migrations"},
+		{"--dry-run", "snapshot", "--", "-y", "--", "--flag", "value with spaces"},
+		{"--dry-run", "upgrade", "v0.39.5"},
+	} {
+		fullArgs := append([]string{"--justfile", filepath.Join(dir, "justfile"), "--working-directory", dir}, args...)
+		cmd := exec.Command("just", fullArgs...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("just dry-run %#v failed: %v\n%s", args, err, output)
+		}
 	}
 }
 

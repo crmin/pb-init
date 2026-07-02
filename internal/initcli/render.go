@@ -19,6 +19,7 @@ const (
 	templateDockerfile   = "templates/Dockerfile.tmpl"
 	templateDockerignore = "templates/.dockerignore.tmpl"
 	templateGitignore    = "templates/.gitignore.tmpl"
+	templateJustfile     = "templates/justfile.tmpl"
 )
 
 // RenderProject writes the generated PocketBase project files.
@@ -58,6 +59,12 @@ func RenderProject(project Project, cfg Config, templates fs.FS) error {
 		}
 	}
 
+	if cfg.Just {
+		if err := renderTemplateFile(templates, templateJustfile, filepath.Join(project.Dir, "justfile"), data, false); err != nil {
+			return err
+		}
+	}
+
 	return renderTemplateFile(templates, templateGitignore, filepath.Join(project.Dir, ".gitignore"), data, false)
 }
 
@@ -70,6 +77,7 @@ type renderData struct {
 	AutoMigration    string
 	CgoEnabled       string
 	BinaryName       string
+	Justfile         bool
 }
 
 func templateData(project Project, cfg Config) renderData {
@@ -82,6 +90,7 @@ func templateData(project Project, cfg Config) renderData {
 		AutoMigration:    boolLiteral(cfg.AutoMigration),
 		CgoEnabled:       cgoValue(cfg.CgoEnabled),
 		BinaryName:       binaryName(project.ModulePath),
+		Justfile:         cfg.Just,
 	}
 }
 

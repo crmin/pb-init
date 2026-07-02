@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set positional-arguments := true
+
+# List available recipes and short descriptions.
+[private]
+default:
+    @just --list
+
+# Start the PocketBase server and forward arguments to `go run . serve`.
+serve *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go run . serve "$@"
+
+# Create a collection migration snapshot with PocketBase.
+migrate *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./pocketbase migrate collections "$@"
+
+# Create a collection snapshot and keep only the newest migration file.
+snapshot *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    yes=false
+    forward_rest=false
+    migrate_args=()
+    delete_files=()
+
+    for arg in "$@"; do
+        if [[ "$forward_rest" == true ]]; then
+            migrate_args+=("$arg")
+            continue
+        fi
+
+        case "$arg" in
+            -y)
+                yes=true
+                ;;
+            --)
+                forward_rest=true
+                ;;
+            *)
+                migrate_args+=("$arg")
+                ;;
+        esac
+    done
+
+    if [[ ${#migrate_args[@]} -eq 0 ]]; then
+        printf 'y\n' | ./pocketbase migrate collections
+    else
+        printf 'y\n' | ./pocketbase migrate collections "${migrate_args[@]}"
+    fi
+
+    if [[ ! -d migrations ]]; then
+        exit 0
+    fi
+
+    latest_file=""
+    latest_ts=""
+
+    while IFS= read -r file; do
+        name="${file##*/}"
+        ts="${name%%_*}"
+
+        if [[ "$name" == *_*.go && "$ts" =~ ^[0-9]+$ ]]; then
+            if [[ -z "$latest_file" || "$ts" -ge "$latest_ts" ]]; then
+                latest_file="$file"
+                latest_ts="$ts"
+            fi
+        fi
+    done < <(find migrations -maxdepth 1 -type f -name '*.go' -print | sort)
+
+    while IFS= read -r file; do
+        if [[ -z "$latest_file" || "$file" != "$latest_file" ]]; then
+            delete_files+=("$file")
+        fi
+    done < <(find migrations -maxdepth 1 -type f -name '*.go' -print | sort)
+
+    if [[ ${#delete_files[@]} -eq 0 ]]; then
+        exit 0
+    fi
+
+    if [[ "$yes" != true ]]; then
+        printf 'The following files will be deleted:\n'
+        printf '%s\n' "${delete_files[@]}"
+
+        while true; do
+            read -r -p 'The following files will be deleted. Continue? (Y/n): ' answer
+            normalized=$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')
+
+            case "$normalized" in
+                y)
+                    break
+                    ;;
+                n)
+                    printf 'Collection snapshot creation cancelled by user.\n'
+                    exit 0
+                    ;;
+                *)
+                    ;;
+            esac
+        done
+    fi
+
+    rm -f -- "${delete_files[@]}"
+
+# Upgrade the PocketBase Go module dependency.
+upgrade version="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    version="$1"
+
+    case "$version" in
+        "")
+            go get -u github.com/pocketbase/pocketbase
+            ;;
+        latest)
+            go get -u github.com/pocketbase/pocketbase@latest
+            ;;
+        none)
+            printf 'Invalid version: "none" is not allowed.\n' >&2
+            exit 1
+            ;;
+        v*)
+            go get -u "github.com/pocketbase/pocketbase@$version"
+            ;;
+        [0-9]*)
+            go get -u "github.com/pocketbase/pocketbase@v$version"
+            ;;
+        *)
+            printf 'Unsupported version format. Supported values are:\n' >&2
+            printf '    - latest\n' >&2
+            printf '    - a.b.c (e.g. 0.39.5)\n' >&2
+            printf '    - va.b.c (e.g. v0.39.5)\n' >&2
+            exit 1
+            ;;
+    esac

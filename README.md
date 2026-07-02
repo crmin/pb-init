@@ -117,6 +117,10 @@ When used with `--docker`, the generated Dockerfile copies `pb_migrations` and `
 
 Use `CGO_ENABLED=1` in the generated Dockerfile. This only affects Dockerfile generation when `--docker` is used.
 
+`--just`
+
+Generate a `justfile` in the project module root with common PocketBase project commands.
+
 `--recommend`, `-r`
 
 Equivalent to `--docker --auto-migration`.
@@ -157,6 +161,44 @@ pb_migrations/
 pb_hooks/
 ```
 
+With `--just`:
+
+```text
+justfile
+```
+
+When `--docker` and `--just` are used together, `.dockerignore` also includes `justfile`. Without `--just`, `.dockerignore` does not include it.
+
+## Generated just Commands
+
+`just`
+
+List available recipes with short descriptions. The default recipe is private, so it does not appear in the list.
+
+`just serve [args...]`
+
+Run:
+
+```sh
+go run . serve [args...]
+```
+
+`just migrate [args...]`
+
+Run:
+
+```sh
+./pocketbase migrate collections [args...]
+```
+
+`just snapshot [-y] [-- args...]`
+
+Create a collection snapshot and keep only the newest Go migration file in `migrations/`. Without `-y`, it prints the files that will be deleted and asks for confirmation.
+
+`just upgrade [version]`
+
+Upgrade the PocketBase Go dependency. Use no version, `latest`, a version like `0.39.5`, or a `v`-prefixed version like `v0.39.5`.
+
 ## Examples
 
 Create a recommended project:
@@ -169,6 +211,12 @@ Create a Docker-ready project with JSVM and nested Go migrations:
 
 ```sh
 go run github.com/crmin/pb-init github.com/username/myproject --docker --jsvm --migration-dir=internal/migrations
+```
+
+Create a project with a generated justfile:
+
+```sh
+go run github.com/crmin/pb-init myproject --just
 ```
 
 Use a specific PocketBase version:
