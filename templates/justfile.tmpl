@@ -85,7 +85,7 @@ snapshot *args:
 
     if [[ "$yes" != true ]]; then
         printf 'The following files will be deleted:\n'
-        printf '%s\n' "${delete_files[@]}"
+        printf '    - %s\n' "${delete_files[@]}"
 
         while true; do
             read -r -p 'The following files will be deleted. Continue? (Y/n): ' answer

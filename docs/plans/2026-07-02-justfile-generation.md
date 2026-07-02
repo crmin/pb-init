@@ -168,7 +168,7 @@ snapshot *args:
 
     if [[ "$yes" != true ]]; then
         printf 'The following files will be deleted:\n'
-        printf '%s\n' "${delete_files[@]}"
+        printf '    - %s\n' "${delete_files[@]}"
 
         while true; do
             read -r -p 'The following files will be deleted. Continue? (Y/n): ' answer
@@ -322,6 +322,7 @@ upgrade version="":
 - `--just` 추가로 help output과 `Config` 구조가 확장된다.
 - 생성된 justfile은 `just` binary가 설치된 환경에서만 사용할 수 있다. `pb-init` 자체 실행에는 `just`가 필요하지 않다.
 - `snapshot`은 configured migration directory의 `*.go` 중 최신 numeric timestamp 파일 하나만 보존한다. 수동 Go migration 파일도 `.go`이면 삭제 대상이 되므로, 삭제 prompt와 `-y` 사용 여부가 중요하다.
+- 삭제 대상 목록은 `    - {file}` bullet 형식으로 출력한다.
 - prompt 문구는 요구된 문자열 `The following files will be deleted. Continue? (Y/n): `을 그대로 사용하지만, 빈 Enter는 진행으로 처리하지 않고 재프롬프트한다.
 - shebang recipe는 just actual run에서 command body를 echo하지 않는다. `just --dry-run`은 검증 목적상 body를 출력하는 것이 정상이다.
 - `upgrade`는 요구된 starts-with 분기를 그대로 따르므로 `vbad`, `1beta` 같은 값도 `go get`으로 전달된다. 이 경우 실패 여부는 Go command가 결정한다.

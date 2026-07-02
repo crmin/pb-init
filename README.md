@@ -193,7 +193,7 @@ go run . migrate collections [args...]
 
 `just snapshot [-y] [-- args...]`
 
-Create a collection snapshot with `go run . migrate collections` and keep only the newest Go migration file in the configured `--migration-dir` directory. Without `-y`, it prints the files that will be deleted and asks for confirmation.
+Create a collection snapshot with `go run . migrate collections` and keep only the newest Go migration file in the configured `--migration-dir` directory. Without `-y`, it prints the files that will be deleted as an indented bullet list and asks for confirmation.
 
 `just upgrade [version]`
 

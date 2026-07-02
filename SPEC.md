@@ -173,7 +173,7 @@ Cannot use -h in a short flag bundle.
         - `--migration-dir` 경로의 `*.go` 파일 중 `{unix_timestamp_in_sec}_{action_description}.go` 형식이며 `_` 앞 첫 번째 chunk가 숫자인 파일을 timestamp migration file로 판단함.
         - timestamp가 가장 큰 파일 하나를 최신 migration file로 판단함. timestamp가 같은 파일이 여러 개면 파일명 정렬 기준으로 마지막으로 처리된 파일을 최신 파일로 판단함.
         - 최신 migration file을 제외한 `--migration-dir` 경로의 `*.go` 파일은 모두 삭제 대상임. 따라서 `init.go`와 timestamp 형식이 아닌 `.go` 파일도 삭제 대상임.
-        - `-y` flag가 설정되지 않은 경우 삭제 대상 파일 목록을 출력하고 `The following files will be deleted. Continue? (Y/n): ` prompt를 표시함.
+        - `-y` flag가 설정되지 않은 경우 삭제 대상 파일 목록을 `    - {file}` bullet 형식으로 출력하고 `The following files will be deleted. Continue? (Y/n): ` prompt를 표시함.
             - prompt 입력값은 case insensitive.
             - `y`가 입력된 경우 해당 파일을 삭제하고 진행함.
             - `n`이 입력된 경우 `Collection snapshot creation cancelled by user.`를 출력하고 정상 종료함. (exit=0)

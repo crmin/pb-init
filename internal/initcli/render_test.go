@@ -151,6 +151,7 @@ func TestRenderWritesJustfileWhenJustEnabled(t *testing.T) {
 		"migrate *args:",
 		"snapshot *args:",
 		"upgrade version=\"\":",
+		`printf '    - %s\n' "${delete_files[@]}"`,
 		"The following files will be deleted. Continue? (Y/n): ",
 	} {
 		if !strings.Contains(justfile, want) {
