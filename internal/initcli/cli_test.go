@@ -45,13 +45,23 @@ func TestParseShortBundleRejectsUnknownFlag(t *testing.T) {
 	assertErrMessage(t, err, "Invalid flag: -x")
 }
 
-func TestParseRecommendExpandsDockerAutoMigration(t *testing.T) {
+func TestParseRecommendExpandsDockerAutoMigrationAndJust(t *testing.T) {
 	cfg, err := ParseArgs([]string{"--recommend"})
 	if err != nil {
 		t.Fatalf("ParseArgs returned error: %v", err)
 	}
-	if !cfg.Docker || !cfg.AutoMigration {
-		t.Fatalf("expected --recommend to enable docker and auto migration: %+v", cfg)
+	if !cfg.Docker || !cfg.AutoMigration || !cfg.Just {
+		t.Fatalf("expected --recommend to enable docker, auto migration, and justfile generation: %+v", cfg)
+	}
+}
+
+func TestParseRecommendShortFlagExpandsDockerAutoMigrationAndJust(t *testing.T) {
+	cfg, err := ParseArgs([]string{"-r"})
+	if err != nil {
+		t.Fatalf("ParseArgs returned error: %v", err)
+	}
+	if !cfg.Docker || !cfg.AutoMigration || !cfg.Just {
+		t.Fatalf("expected -r to enable docker, auto migration, and justfile generation: %+v", cfg)
 	}
 }
 
@@ -120,7 +130,10 @@ func TestHelpMessageUsesLongRecommendExpansion(t *testing.T) {
 	if strings.Contains(help, "Equivalent to -dm.") {
 		t.Fatal("help should not describe recommend with a short flag bundle")
 	}
-	if !strings.Contains(help, "Equivalent to --docker --auto-migration.") {
+	if strings.Contains(help, "Equivalent to --docker --auto-migration.") {
+		t.Fatal("help should not describe recommend without --just")
+	}
+	if !strings.Contains(help, "Equivalent to --docker --auto-migration --just.") {
 		t.Fatal("help should describe recommend with long flags")
 	}
 }

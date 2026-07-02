@@ -27,6 +27,7 @@ snapshot *args:
     forward_rest=false
     migrate_args=()
     delete_files=()
+    migration_dir="{{.MigrationDir}}"
 
     for arg in "$@"; do
         if [[ "$forward_rest" == true ]]; then
@@ -53,7 +54,7 @@ snapshot *args:
         printf 'y\n' | ./pocketbase migrate collections "${migrate_args[@]}"
     fi
 
-    if [[ ! -d migrations ]]; then
+    if [[ ! -d "$migration_dir" ]]; then
         exit 0
     fi
 
@@ -70,13 +71,13 @@ snapshot *args:
                 latest_ts="$ts"
             fi
         fi
-    done < <(find migrations -maxdepth 1 -type f -name '*.go' -print | sort)
+    done < <(find "$migration_dir" -maxdepth 1 -type f -name '*.go' -print | sort)
 
     while IFS= read -r file; do
         if [[ -z "$latest_file" || "$file" != "$latest_file" ]]; then
             delete_files+=("$file")
         fi
-    done < <(find migrations -maxdepth 1 -type f -name '*.go' -print | sort)
+    done < <(find "$migration_dir" -maxdepth 1 -type f -name '*.go' -print | sort)
 
     if [[ ${#delete_files[@]} -eq 0 ]]; then
         exit 0

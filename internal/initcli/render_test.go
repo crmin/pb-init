@@ -159,6 +159,29 @@ func TestRenderWritesJustfileWhenJustEnabled(t *testing.T) {
 	}
 }
 
+func TestRenderJustfileUsesConfiguredMigrationDirInSnapshot(t *testing.T) {
+	dir := renderFixture(t, Config{MigrationDir: "internal/migrations", Just: true})
+
+	justfile := readFile(t, dir, "justfile")
+	for _, want := range []string{
+		`migration_dir="internal/migrations"`,
+		`if [[ ! -d "$migration_dir" ]]; then`,
+		`find "$migration_dir" -maxdepth 1 -type f -name '*.go' -print | sort`,
+	} {
+		if !strings.Contains(justfile, want) {
+			t.Fatalf("justfile missing %q:\n%s", want, justfile)
+		}
+	}
+	for _, notWant := range []string{
+		"[[ ! -d migrations ]]",
+		"find migrations -maxdepth 1",
+	} {
+		if strings.Contains(justfile, notWant) {
+			t.Fatalf("justfile should not contain hardcoded migration dir %q:\n%s", notWant, justfile)
+		}
+	}
+}
+
 func TestRenderSkipsJustfileWhenJustDisabled(t *testing.T) {
 	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir})
 

@@ -6,10 +6,6 @@
   - 영향: 추가 프로젝트 지침이 있을 가능성은 있지만 로컬에서 확인할 수 없다.
   - 현재 대응: 확인 가능한 `AGENTS.md`, `SPEC.md`, skill 지침을 기준으로 계획을 작성한다.
 
-- `snapshot`은 generated `justfile`의 `migrations` 디렉토리만 정리한다.
-  - 영향: `--migration-dir=internal/migrations`처럼 custom migration directory를 쓰는 프로젝트에서는 `just snapshot`이 생성된 custom directory 파일을 정리하지 않는다.
-  - 현재 대응: 사용자 요구와 승인된 계획이 `migrations` 디렉토리를 명시했으므로 이번 작업에서는 범위를 확장하지 않는다.
-
 ## Resolved
 
 - subagent 1차 검증에서 `snapshot` 빈 배열 확장 문제가 발견됐다.
@@ -30,3 +26,7 @@
 - prompt 문구 `The following files will be deleted. Continue? (Y/n): `는 관례상 빈 Enter를 yes로 암시할 수 있다.
   - 원인: 사용자 요구 prompt 문자열이 `(Y/n)`이지만 입력 규칙은 `y`, `n`, 다른 값 재프롬프트로 정의됨.
   - 해결: 사용자 요구와 승인된 계획에 맞춰 빈 입력도 재프롬프트하는 것으로 문서화하고 구현.
+
+- `snapshot`은 generated `justfile`의 `migrations` 디렉토리만 정리했다.
+  - 원인: 초기 `templates/justfile.tmpl`이 `migrations`를 hardcoding했음.
+  - 해결: 후속 요구사항에 따라 `templates/justfile.tmpl`이 `{{.MigrationDir}}`를 렌더링해 configured migration directory를 정리 대상으로 사용하도록 변경.

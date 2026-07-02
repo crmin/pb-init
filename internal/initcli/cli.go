@@ -214,7 +214,7 @@ Flags:
   --just
     Generate a justfile with common PocketBase project commands.
   -r, --recommend
-    Equivalent to --docker --auto-migration.
+    Equivalent to --docker --auto-migration --just.
 `, command)
 }
 
@@ -353,6 +353,7 @@ func splitPathParts(path string) []string {
 func applyRecommend(cfg *Config) {
 	cfg.Docker = true
 	cfg.AutoMigration = true
+	cfg.Just = true
 }
 
 func usageError(message string) *UsageError {

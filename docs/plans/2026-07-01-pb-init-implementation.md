@@ -64,7 +64,7 @@ Flags:
   --cgo-enabled
     Use CGO_ENABLED=1 in the generated Dockerfile when --docker is enabled.
   -r, --recommend
-    Equivalent to --docker --auto-migration.
+    Equivalent to --docker --auto-migration --just.
 ```
 
 ### Error And Warning Messages

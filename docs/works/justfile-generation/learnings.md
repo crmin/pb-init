@@ -20,7 +20,7 @@
 - 구현 전 `go test ./...`는 `Config.Just` 필드와 `templates/justfile.tmpl` 부재로 실패해 신규 테스트가 현재 미구현 계약을 잡는 것을 확인했다.
 - `--just` parser/help, `justfile` 렌더링, `.dockerignore` 조건 렌더링 구현 후 `go test ./...`가 통과했다.
 - `just` dry-run 테스트는 실제 `go`, `./pocketbase`, `rm` 실행 없이 justfile parse와 recipe argument 전달 문법을 확인한다.
-- `snapshot` 정리 대상은 계획과 사용자 요청에 맞춰 generated `justfile`의 `migrations` 디렉토리로 고정했다. 기존 `--migration-dir`을 별도 값으로 지정한 경우 custom migration directory 정리까지 확장하지 않는다.
+- 후속 요구사항에 따라 `snapshot` 정리 대상은 generated `justfile`의 `migrations` 고정값이 아니라 configured `--migration-dir` 경로로 변경되어야 한다.
 - 최종 검증에서 `go test ./...`, `go build ./...`, 임시 프로젝트 `--just --docker` 생성 smoke, `.dockerignore`의 `justfile` 항목 확인, `just --list` recipe 목록 확인, `just snapshot` dry-run syntax 확인이 통과했다.
 
 ## 재사용 키워드

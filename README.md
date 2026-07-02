@@ -123,7 +123,7 @@ Generate a `justfile` in the project module root with common PocketBase project 
 
 `--recommend`, `-r`
 
-Equivalent to `--docker --auto-migration`.
+Equivalent to `--docker --auto-migration --just`.
 
 Short flags except `-h` and `-r` can be bundled:
 
@@ -193,7 +193,7 @@ Run:
 
 `just snapshot [-y] [-- args...]`
 
-Create a collection snapshot and keep only the newest Go migration file in `migrations/`. Without `-y`, it prints the files that will be deleted and asks for confirmation.
+Create a collection snapshot and keep only the newest Go migration file in the configured `--migration-dir` directory. Without `-y`, it prints the files that will be deleted and asks for confirmation.
 
 `just upgrade [version]`
 
@@ -206,6 +206,8 @@ Create a recommended project:
 ```sh
 go run github.com/crmin/pb-init myproject --recommend
 ```
+
+This enables Docker generation, auto migration, and justfile generation.
 
 Create a Docker-ready project with JSVM and nested Go migrations:
 

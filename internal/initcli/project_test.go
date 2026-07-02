@@ -410,6 +410,26 @@ func TestRunPrintsStepLogsInOrder(t *testing.T) {
 	})
 }
 
+func TestRecommendGeneratesJustfileAndDockerignoreEntry(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
+	runner := &fakeRunner{}
+
+	code, _, stderr := runForProject([]string{"--recommend"}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	justfile := readFile(t, dir, "justfile")
+	if !strings.Contains(justfile, "snapshot *args:") {
+		t.Fatalf("justfile missing snapshot recipe:\n%s", justfile)
+	}
+	dockerignore := readFile(t, dir, ".dockerignore")
+	if !strings.Contains(dockerignore, "\njustfile\n") {
+		t.Fatalf(".dockerignore missing justfile:\n%s", dockerignore)
+	}
+}
+
 func runForProject(args []string, dir string, runner *fakeRunner) (int, string, string) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

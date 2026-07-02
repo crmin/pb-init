@@ -1,5 +1,10 @@
 # justfile 생성 옵션 추가 계획
 
+## 후속 변경
+
+- 2026-07-02 후속 요구에 따라 `--recommend`은 `--docker --auto-migration --just`와 동일하게 변경됐다.
+- 2026-07-02 후속 요구에 따라 generated `justfile`의 `snapshot` 정리 대상은 `migrations` 고정값이 아니라 `{{.MigrationDir}}`로 렌더링되는 configured migration directory다.
+
 ## 목표와 현재 동작
 
 - 목표: `pb-init` 실행 옵션에 `--just` flag를 추가해 생성 대상 PocketBase module root에 `justfile`을 작성한다.
@@ -59,7 +64,7 @@
 - `HelpMessage`의 Flags section에 `--just` 설명을 추가한다.
   - 예상 문구: `--just Generate a justfile with common PocketBase project commands.`
 - short flag는 추가하지 않는다. 사용자 요청에 short flag가 없고, 기존 short bundle 계약을 넓히지 않는 것이 범위가 작다.
-- `--recommend`은 기존처럼 `--docker --auto-migration`만 의미하며 `--just`를 암묵적으로 켜지 않는다.
+- `--recommend`은 후속 요구에 따라 `--docker --auto-migration --just`를 의미한다.
 
 ### `internal/initcli/render.go`
 
@@ -105,6 +110,7 @@ snapshot *args:
     forward_rest=false
     migrate_args=()
     delete_files=()
+    migration_dir="{{.MigrationDir}}"
 
     for arg in "$@"; do
         if [[ "$forward_rest" == true ]]; then
@@ -131,7 +137,7 @@ snapshot *args:
         printf 'y\n' | ./pocketbase migrate collections "${migrate_args[@]}"
     fi
 
-    if [[ ! -d migrations ]]; then
+    if [[ ! -d "$migration_dir" ]]; then
         exit 0
     fi
 
@@ -148,13 +154,13 @@ snapshot *args:
                 latest_ts="$ts"
             fi
         fi
-    done < <(find migrations -maxdepth 1 -type f -name '*.go' -print | sort)
+    done < <(find "$migration_dir" -maxdepth 1 -type f -name '*.go' -print | sort)
 
     while IFS= read -r file; do
         if [[ -z "$latest_file" || "$file" != "$latest_file" ]]; then
             delete_files+=("$file")
         fi
-    done < <(find migrations -maxdepth 1 -type f -name '*.go' -print | sort)
+    done < <(find "$migration_dir" -maxdepth 1 -type f -name '*.go' -print | sort)
 
     if [[ ${#delete_files[@]} -eq 0 ]]; then
         exit 0
@@ -223,7 +229,7 @@ upgrade version="":
 - `set positional-arguments := true`를 사용해 `serve`, `migrate`, `snapshot`의 공백 포함 인자를 `"$@"`로 보존한다.
 - shebang recipe는 실제 실행 시 just가 recipe 본문을 echo하지 않으므로 stdout/stderr는 실행 명령의 출력만 표시된다.
 - `snapshot`에서 `--` 앞의 `-y`는 recipe 전용 확인 생략 flag로 처리한다. `--` 뒤의 값은 `-y`라도 PocketBase migrate 인자로 전달한다.
-- `snapshot`은 `migrations/*.go` 중 numeric timestamp prefix가 가장 큰 파일 하나를 최신 migration으로 보고, 그 외 모든 `.go` 파일은 삭제 대상으로 본다. 따라서 `init.go`와 non-numeric `.go`도 삭제 대상이다.
+- `snapshot`은 configured migration directory의 `*.go` 중 numeric timestamp prefix가 가장 큰 파일 하나를 최신 migration으로 보고, 그 외 모든 `.go` 파일은 삭제 대상으로 본다. 따라서 `init.go`와 non-numeric `.go`도 삭제 대상이다.
 - prompt 입력은 명시 요구대로 `y`/`Y`만 진행, `n`/`N`만 취소, 그 외 값과 빈 입력은 재프롬프트한다.
 - `upgrade`는 사용자 요구의 prefix 규칙을 따른다. `latest`, `none`, `v`로 시작, 숫자로 시작, 그 외 값을 분기하며 semver 정규식 검증은 추가하지 않는다.
 
@@ -300,6 +306,7 @@ upgrade version="":
 ## 변경 후 기대 동작
 
 - `go run github.com/crmin/pb-init myproject --just`는 `myproject/justfile`을 생성한다.
+- `go run github.com/crmin/pb-init myproject --recommend`는 `--docker --auto-migration --just`를 적용한다.
 - `--just`가 없으면 `justfile`은 생성되지 않는다.
 - `--docker --just`는 `.dockerignore`에 `justfile`을 포함한다.
 - `--docker`만 있고 `--just`가 없으면 `.dockerignore`에 `justfile`이 포함되지 않는다.
@@ -307,14 +314,14 @@ upgrade version="":
 - 생성된 module에서 `just`는 `just --list`를 실행하고 `default` recipe 자체는 목록에 표시하지 않는다.
 - `just serve [args...]`는 `go run . serve [args...]`를 실행한다.
 - `just migrate [args...]`는 `./pocketbase migrate collections [args...]`를 실행한다.
-- `just snapshot [-y] [-- args...]`는 collection snapshot을 만들고 최신 timestamp migration `.go` 하나만 남기며, `-y`가 없으면 삭제 전 확인 prompt를 표시한다.
+- `just snapshot [-y] [-- args...]`는 collection snapshot을 만들고 configured migration directory의 최신 timestamp migration `.go` 하나만 남기며, `-y`가 없으면 삭제 전 확인 prompt를 표시한다.
 - `just upgrade [version]`은 요구된 version 분기에 따라 `go get -u github.com/pocketbase/pocketbase...`를 실행하거나 지정 오류를 stderr로 출력한다.
 
 ## 예상 부작용과 호환성 위험
 
 - `--just` 추가로 help output과 `Config` 구조가 확장된다.
 - 생성된 justfile은 `just` binary가 설치된 환경에서만 사용할 수 있다. `pb-init` 자체 실행에는 `just`가 필요하지 않다.
-- `snapshot`은 `migrations/*.go` 중 최신 numeric timestamp 파일 하나만 보존한다. 수동 Go migration 파일도 `.go`이면 삭제 대상이 되므로, 삭제 prompt와 `-y` 사용 여부가 중요하다.
+- `snapshot`은 configured migration directory의 `*.go` 중 최신 numeric timestamp 파일 하나만 보존한다. 수동 Go migration 파일도 `.go`이면 삭제 대상이 되므로, 삭제 prompt와 `-y` 사용 여부가 중요하다.
 - prompt 문구는 요구된 문자열 `The following files will be deleted. Continue? (Y/n): `을 그대로 사용하지만, 빈 Enter는 진행으로 처리하지 않고 재프롬프트한다.
 - shebang recipe는 just actual run에서 command body를 echo하지 않는다. `just --dry-run`은 검증 목적상 body를 출력하는 것이 정상이다.
 - `upgrade`는 요구된 starts-with 분기를 그대로 따르므로 `vbad`, `1beta` 같은 값도 `go get`으로 전달된다. 이 경우 실패 여부는 Go command가 결정한다.

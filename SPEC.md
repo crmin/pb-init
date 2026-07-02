@@ -98,7 +98,7 @@ Cannot use -h in a short flag bundle.
 - `--jsvm` (`-j`): jsvm 기능을 활성화합니다. pb_hooks, js migrations, js runtime을 사용 할 수 있습니다
 - `--cgo-enabled`: `--docker` flag와 함께 전달되는 경우 CGO_ENABLED=1 옵션으로 build합니다.
 - `--just`: 프로젝트 모듈 디렉토리 root에 `justfile`을 생성합니다.
-- `--recommend` (`-r`): `--docker --auto-migration`과 동일함.
+- `--recommend` (`-r`): `--docker --auto-migration --just`와 동일함.
 
 # Output Streams
 
@@ -165,13 +165,14 @@ Cannot use -h in a short flag bundle.
     - `just` 또는 `just default`: `[private]`로 숨겨진 default recipe가 `just --list`를 실행함. default recipe 자체는 `just --list` 결과에 표시되지 않아야 함.
     - `just serve [args...]`: `go run . serve [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `go run . serve`의 argument로 전달함.
     - `just migrate [args...]`: `./pocketbase migrate collections [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `./pocketbase migrate collections`의 argument로 전달함.
-    - `just snapshot [-y] [-- args...]`: `printf 'y\n' | ./pocketbase migrate collections [args...]`를 실행해 collection snapshot을 생성한 뒤 `migrations` 디렉토리의 최신 snapshot 파일만 유지함.
+    - `{{.MigrationDir}}`: `--migration-dir` 옵션의 값. `just snapshot`에서 collection snapshot 생성 후 정리 대상 디렉토리로 사용됨.
+    - `just snapshot [-y] [-- args...]`: `printf 'y\n' | ./pocketbase migrate collections [args...]`를 실행해 collection snapshot을 생성한 뒤 `--migration-dir` 경로의 최신 snapshot 파일만 유지함.
         - `--` 앞의 `-y`는 recipe 전용 flag로 처리해 삭제 확인 prompt를 생략함.
         - `--` 뒤에 전달된 값은 `-y`라도 `./pocketbase migrate collections`의 argument로 전달함.
-        - `migrations` 디렉토리가 없으면 collection snapshot 생성 이후 추가 삭제 작업 없이 정상 종료함.
-        - `migrations` 디렉토리의 `*.go` 파일 중 `{unix_timestamp_in_sec}_{action_description}.go` 형식이며 `_` 앞 첫 번째 chunk가 숫자인 파일을 timestamp migration file로 판단함.
+        - `--migration-dir` 경로의 디렉토리가 없으면 collection snapshot 생성 이후 추가 삭제 작업 없이 정상 종료함.
+        - `--migration-dir` 경로의 `*.go` 파일 중 `{unix_timestamp_in_sec}_{action_description}.go` 형식이며 `_` 앞 첫 번째 chunk가 숫자인 파일을 timestamp migration file로 판단함.
         - timestamp가 가장 큰 파일 하나를 최신 migration file로 판단함. timestamp가 같은 파일이 여러 개면 파일명 정렬 기준으로 마지막으로 처리된 파일을 최신 파일로 판단함.
-        - 최신 migration file을 제외한 `migrations/*.go` 파일은 모두 삭제 대상임. 따라서 `init.go`와 timestamp 형식이 아닌 `.go` 파일도 삭제 대상임.
+        - 최신 migration file을 제외한 `--migration-dir` 경로의 `*.go` 파일은 모두 삭제 대상임. 따라서 `init.go`와 timestamp 형식이 아닌 `.go` 파일도 삭제 대상임.
         - `-y` flag가 설정되지 않은 경우 삭제 대상 파일 목록을 출력하고 `The following files will be deleted. Continue? (Y/n): ` prompt를 표시함.
             - prompt 입력값은 case insensitive.
             - `y`가 입력된 경우 해당 파일을 삭제하고 진행함.
