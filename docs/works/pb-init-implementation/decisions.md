@@ -16,6 +16,10 @@
 - JSVM plugin dependency 보강 - `--jsvm` 전달 시 generated project build를 위해 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}`를 추가 실행한다.
 - JSVM Docker asset 포함 - `--jsvm --docker` 조합에서 Dockerfile final stage에 `pb_migrations`, `pb_hooks`를 copy한다.
 - `MigrationPackage`는 SPEC 보완과 함께 추가 - 중첩 migration directory를 유효한 Go package로 생성하기 위해 template variable을 추가하되 같은 commit에서 `SPEC.md`를 보완한다.
+- SDK 설치와 파일 렌더링 후 tidy 실행 - 사용자 요청에 따라 generated module에서 PocketBase SDK와 선택적 JSVM plugin 설치 후 `go mod tidy`를 실행하되, generated imports가 제거되지 않도록 파일 렌더링 뒤에 실행한다.
+- `moduleName` 대상 기존 module guard - `moduleName`이 전달된 경우에도 대상 디렉토리가 Go module이면 current directory mode와 같은 `--force` 기준을 적용한다.
+- 성공 안내 색상 출력 - 완료 메시지의 지정 token은 `github.com/fatih/color`로 cyan 또는 magenta foreground를 적용한다.
+- SPEC 최소 최신화 - 새 동작은 `SPEC.md` 기존 문체와 구조를 유지하며 필요한 문장만 삽입한다.
 
 ## Change Log
 
@@ -59,3 +63,20 @@
 
 - Changed: Commit 4 범위로 영어 README 작성과 최종 검증 완료.
 - Reason: 승인된 계획의 네 번째 원자 작업 단위 완료.
+
+### 2026-07-02
+
+- Changed: PocketBase SDK 설치 후 `go mod tidy`, 단계별 로그, color 완료 메시지, `moduleName` 대상 기존 Go module guard를 새 계획 범위로 추가.
+- Reason: 사용자가 새 초기화 실행 흐름과 출력 계약을 요청했고, 기존 구현은 `go mod init` 중복 실행과 성공 안내 누락이 있음.
+
+- Changed: `SPEC.md` 업데이트는 기존 작성 내용 수정을 최소화하고 새 내용도 기존 문체와 통일되게 작성하는 방식으로 결정.
+- Reason: 사용자가 명세 최신화를 추가 요청하면서 기존 문체와 최소 수정 원칙을 명시함.
+
+- Changed: `go mod tidy` 실행 순서를 SDK 설치 직후가 아니라 starter file 렌더링 이후로 보정.
+- Reason: 렌더링 전 tidy를 실행하면 아직 generated `main.go` import가 없어 `go get`으로 추가한 PocketBase 의존성이 제거될 수 있기 때문.
+
+- Changed: `github.com/fatih/color`는 완료 메시지에서 `EnableColor()`를 적용해 지정 token에 ANSI color를 강제로 출력하도록 구현.
+- Reason: stdout이 terminal이 아닌 테스트/redirect 환경에서도 사용자 요구의 foreground color 계약을 일관되게 검증하기 위함.
+
+- Changed: baseline `.dockerignore`/`.gitignore` 템플릿 마지막 줄에 trailing newline을 유지.
+- Reason: generated ignore 파일을 정상 텍스트 파일 형태로 만들고 기존 `.dockerignore` binary name 테스트 실패를 해소하기 위함.

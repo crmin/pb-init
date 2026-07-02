@@ -20,8 +20,10 @@ var goVersionLinePattern = regexp.MustCompile(`^go \d+\.\d+(?:\.\d+)?$`)
 
 // Project describes the target PocketBase project module.
 type Project struct {
-	Dir        string
-	ModulePath string
+	Dir            string
+	RelativeDir    string
+	ModulePath     string
+	FromModuleName bool
 }
 
 // ProjectEnv contains dependencies for project preparation.
@@ -61,10 +63,12 @@ func PrepareProject(cfg Config, env ProjectEnv) (Project, error) {
 		return Project{}, err
 	}
 
+	logStep(env.Stdout, "Installing PocketBase SDK: github.com/pocketbase/pocketbase@%s", cfg.PBVersion)
 	if err := runGoGet(project.Dir, cfg.PBVersion, env.Runner); err != nil {
 		return Project{}, err
 	}
 	if cfg.JSVM {
+		logStep(env.Stdout, "Installing PocketBase JSVM plugin: github.com/pocketbase/pocketbase/plugins/jsvm@%s", cfg.PBVersion)
 		if err := runGoGetPackage(project.Dir, "github.com/pocketbase/pocketbase/plugins/jsvm", cfg.PBVersion, env.Runner); err != nil {
 			return Project{}, err
 		}
@@ -126,11 +130,16 @@ func ReadModulePath(dir string) (string, error) {
 }
 
 func resolveProject(cfg Config, env ProjectEnv) (Project, error) {
-	if cfg.ModuleName != "" {
-		return createModuleProject(cfg.ModuleName, env.WorkDir, env.Runner)
+	workDir, err := filepath.Abs(env.WorkDir)
+	if err != nil {
+		return Project{}, err
 	}
 
-	isModule, err := IsGoModule(env.WorkDir)
+	if cfg.ModuleName != "" {
+		return createModuleProject(cfg, workDir, env)
+	}
+
+	isModule, err := IsGoModule(workDir)
 	if err != nil {
 		return Project{}, err
 	}
@@ -138,7 +147,9 @@ func resolveProject(cfg Config, env ProjectEnv) (Project, error) {
 		return Project{}, &InitError{Message: missingModuleNameMessage(env.Command)}
 	}
 
-	requiresForce, err := currentModuleRequiresForce(env.WorkDir)
+	logStep(env.Stdout, "Using Go module directory: %s", workDir)
+
+	requiresForce, err := currentModuleRequiresForce(workDir)
 	if err != nil {
 		return Project{}, err
 	}
@@ -149,22 +160,50 @@ func resolveProject(cfg Config, env ProjectEnv) (Project, error) {
 		fmt.Fprint(env.Stdout, forceProceedMessage)
 	}
 
-	return Project{Dir: env.WorkDir}, nil
+	return Project{Dir: workDir, RelativeDir: "."}, nil
 }
 
-func createModuleProject(moduleName string, workDir string, runner CommandRunner) (Project, error) {
-	dirName := path.Base(moduleName)
+func createModuleProject(cfg Config, workDir string, env ProjectEnv) (Project, error) {
+	dirName := path.Base(cfg.ModuleName)
 	targetDir := filepath.Join(workDir, dirName)
+	relativeDir, err := filepath.Rel(workDir, targetDir)
+	if err != nil {
+		relativeDir = targetDir
+	}
+
+	isModule, err := IsGoModule(targetDir)
+	if err != nil {
+		return Project{}, err
+	}
+	if isModule {
+		logStep(env.Stdout, "Using Go module directory: %s", targetDir)
+
+		requiresForce, err := currentModuleRequiresForce(targetDir)
+		if err != nil {
+			return Project{}, err
+		}
+		if requiresForce {
+			if !cfg.Force {
+				return Project{}, &InitError{Message: forceRequiredMessage}
+			}
+			fmt.Fprint(env.Stdout, forceProceedMessage)
+		}
+
+		return Project{Dir: targetDir, RelativeDir: relativeDir, FromModuleName: true}, nil
+	}
+
+	logStep(env.Stdout, "Preparing module directory: %s", targetDir)
 
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return Project{}, err
 	}
 
-	if err := runCommand(targetDir, runner, "go", "mod", "init", moduleName); err != nil {
+	logStep(env.Stdout, "Initializing Go module: %s", cfg.ModuleName)
+	if err := runCommand(targetDir, env.Runner, "go", "mod", "init", cfg.ModuleName); err != nil {
 		return Project{}, err
 	}
 
-	return Project{Dir: targetDir}, nil
+	return Project{Dir: targetDir, RelativeDir: relativeDir, FromModuleName: true}, nil
 }
 
 func currentModuleRequiresForce(dir string) (bool, error) {
@@ -190,6 +229,10 @@ func runGoGetPackage(dir string, pkg string, version string, runner CommandRunne
 	return runCommand(dir, runner, "go", "get", pkg+"@"+version)
 }
 
+func runGoModTidy(dir string, runner CommandRunner) error {
+	return runCommand(dir, runner, "go", "mod", "tidy")
+}
+
 func runCommand(dir string, runner CommandRunner, name string, args ...string) error {
 	output, err := runner.Run(dir, name, args...)
 	if err == nil {
@@ -203,4 +246,11 @@ func runCommand(dir string, runner CommandRunner, name string, args ...string) e
 
 func missingModuleNameMessage(command string) string {
 	return "This directory is not initialized as a Go module. To initialize the current directory as a PocketBase project, please provide a module name as an argument.\n\nExample:\n- `go run " + command + " myproject`\n- `go run " + command + " github.com/username/myproject`\n"
+}
+
+func logStep(w io.Writer, format string, args ...any) {
+	if w == nil {
+		return
+	}
+	fmt.Fprintf(w, format+"\n", args...)
 }

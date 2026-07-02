@@ -14,7 +14,7 @@ Create a new project directory and initialize it as a Go module:
 go run github.com/crmin/pb-init myproject
 ```
 
-This creates `./myproject`, runs `go mod init myproject`, installs PocketBase, and writes the starter files.
+This creates `./myproject`, runs `go mod init myproject`, installs PocketBase, writes the starter files, and runs `go mod tidy`.
 
 Use a full module path when you want the generated module to keep that path:
 
@@ -26,6 +26,24 @@ This creates `./myproject`, but runs:
 
 ```sh
 go mod init github.com/username/myproject
+```
+
+When initialization finishes, pb-init prints the module path and the next commands to run:
+
+```text
+PocketBase project initialized successfully: /absolute/path/to/myproject
+
+Go to module directory:
+    cd myproject
+
+Start the server:
+    go run . serve
+
+Create a collection snapshot:
+    go run . migrate collections
+
+Create a superuser:
+    go run . superuser create <user_email> <user_password>
 ```
 
 ## Initialize The Current Directory
@@ -44,6 +62,8 @@ go run github.com/crmin/pb-init --force
 ```
 
 `--force` may overwrite or damage existing project files.
+
+The same protection applies when `moduleName` points to a directory that is already a Go module.
 
 ## Options
 
@@ -77,7 +97,7 @@ Print the help message and exit.
 
 `--force`
 
-Allow initialization in a current Go module that already has `go.sum` or root-level Go files.
+Allow initialization in an existing Go module that already has `go.sum` or root-level Go files.
 
 `--docker`, `-d`
 
@@ -169,3 +189,5 @@ go run github.com/crmin/pb-init --docker --auto-migration
 Requested help is printed to stdout.
 
 Errors are printed to stderr. When an external Go command fails, pb-init forwards the command output to stderr and exits with code 1.
+
+Progress logs and the final next-step summary are printed to stdout. Commands and paths in the final summary are colorized.

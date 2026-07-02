@@ -64,11 +64,17 @@ func TestCurrentModuleWithoutGoSumOrGoFilesUsesCurrentDirectory(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
 	}
-	if stdout != "" || stderr != "" {
-		t.Fatalf("expected no output, stdout=%q stderr=%q", stdout, stderr)
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
+	assertContainsAll(t, stdout, []string{
+		"Using Go module directory: " + dir,
+		"Tidying Go module: go mod tidy",
+		"PocketBase project initialized successfully:",
+	})
 	assertCalls(t, runner.calls, []commandCall{
 		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
 
@@ -129,6 +135,7 @@ func TestCurrentModuleWithForcePrintsWarning(t *testing.T) {
 	}
 	assertCalls(t, runner.calls, []commandCall{
 		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
 
@@ -171,6 +178,96 @@ func TestModuleNameCreatesLastPathDirectoryAndRunsGoModInit(t *testing.T) {
 	assertCalls(t, runner.calls, []commandCall{
 		{dir: target, name: "go", args: []string{"mod", "init", "github.com/crmin/test-data"}},
 		{dir: target, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: target, name: "go", args: []string{"mod", "tidy"}},
+	})
+}
+
+func TestModuleNameExistingModuleWithGoSumRequiresForce(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "pb-test")
+	writeFile(t, target, "go.mod", "module github.com/crmin/pb-test\n\ngo 1.20\n")
+	writeFile(t, target, "go.sum", "")
+	runner := &fakeRunner{}
+
+	code, _, stderr := runForProject([]string{"github.com/crmin/pb-test"}, dir, runner)
+
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d", code)
+	}
+	if !strings.Contains(stderr, "This directory is already initialized as a Go module.") {
+		t.Fatalf("stderr missing force error: %q", stderr)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no commands, got %#v", runner.calls)
+	}
+}
+
+func TestModuleNameExistingModuleWithGoFilesRequiresForce(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "pb-test")
+	writeFile(t, target, "go.mod", "module github.com/crmin/pb-test\n\ngo 1.20\n")
+	writeFile(t, target, "main.go", "package main\n")
+	runner := &fakeRunner{}
+
+	code, _, stderr := runForProject([]string{"github.com/crmin/pb-test"}, dir, runner)
+
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d", code)
+	}
+	if !strings.Contains(stderr, "This directory is already initialized as a Go module.") {
+		t.Fatalf("stderr missing force error: %q", stderr)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no commands, got %#v", runner.calls)
+	}
+}
+
+func TestModuleNameExistingModuleWithForcePrintsWarningAndSkipsGoModInit(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "pb-test")
+	writeFile(t, target, "go.mod", "module github.com/crmin/pb-test\n\ngo 1.20\n")
+	writeFile(t, target, "go.sum", "")
+	runner := &fakeRunner{}
+
+	code, stdout, stderr := runForProject([]string{"github.com/crmin/pb-test", "--force"}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	assertContainsAll(t, stdout, []string{
+		"Since the `--force` flag was provided",
+		"Using Go module directory: " + target,
+		"PocketBase project initialized successfully:",
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	assertCalls(t, runner.calls, []commandCall{
+		{dir: target, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: target, name: "go", args: []string{"mod", "tidy"}},
+	})
+}
+
+func TestModuleNameExistingEmptyModuleSkipsGoModInit(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "pb-test")
+	writeFile(t, target, "go.mod", "module github.com/crmin/pb-test\n\ngo 1.20\n")
+	runner := &fakeRunner{}
+
+	code, stdout, stderr := runForProject([]string{"github.com/crmin/pb-test"}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	if strings.Contains(stdout, "Initializing Go module:") {
+		t.Fatalf("expected existing module to skip go mod init, stdout=%q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	assertCalls(t, runner.calls, []commandCall{
+		{dir: target, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
 
@@ -183,8 +280,8 @@ func TestGoModInitFailureWritesCommandOutputToStderr(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
 	}
-	if stdout != "" {
-		t.Fatalf("expected empty stdout, got %q", stdout)
+	if strings.Contains(stdout, "PocketBase project initialized successfully:") {
+		t.Fatalf("stdout should not contain success message: %q", stdout)
 	}
 	if stderr != "go mod init failed\n" {
 		t.Fatalf("unexpected stderr: %q", stderr)
@@ -201,8 +298,8 @@ func TestGoGetFailureWritesCommandOutputToStderr(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
 	}
-	if stdout != "" {
-		t.Fatalf("expected empty stdout, got %q", stdout)
+	if strings.Contains(stdout, "PocketBase project initialized successfully:") {
+		t.Fatalf("stdout should not contain success message: %q", stdout)
 	}
 	if stderr != "go get failed\n" {
 		t.Fatalf("unexpected stderr: %q", stderr)
@@ -222,6 +319,94 @@ func TestJSVMRunsPluginGoGetForTransitiveDependencies(t *testing.T) {
 	assertCalls(t, runner.calls, []commandCall{
 		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@v0.39.5"}},
 		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase/plugins/jsvm@v0.39.5"}},
+		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
+	})
+}
+
+func TestGoModTidyFailureWritesCommandOutputToStderr(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
+	runner := &fakeRunner{}
+	runner.onRun = func(call commandCall) (string, error) {
+		if reflect.DeepEqual(call.args, []string{"mod", "tidy"}) {
+			return "go mod tidy failed\n", errors.New("exit status 1")
+		}
+		return "", nil
+	}
+
+	code, stdout, stderr := runForProject([]string{}, dir, runner)
+
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d", code)
+	}
+	if strings.Contains(stdout, "PocketBase project initialized successfully:") {
+		t.Fatalf("stdout should not contain success message: %q", stdout)
+	}
+	if stderr != "go mod tidy failed\n" {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+}
+
+func TestCurrentModuleSuccessPrintsColoredNextSteps(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
+	runner := &fakeRunner{}
+
+	code, stdout, stderr := runForProject([]string{}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	assertContainsAll(t, stdout, []string{
+		"PocketBase project initialized successfully: " + ansiCyan + dir + ansiReset,
+		"Start the server:\n    " + ansiCyan + "go run . serve" + ansiReset,
+		"Create a collection snapshot:\n    " + ansiCyan + "go run . migrate collections" + ansiReset,
+		"Create a superuser:\n    " + ansiCyan + "go run . superuser create" + ansiReset + " " + ansiMagenta + "<user_email>" + ansiReset + " " + ansiMagenta + "<user_password>" + ansiReset,
+	})
+	if strings.Contains(stdout, "Go to module directory:") {
+		t.Fatalf("current module success should not print cd step: %q", stdout)
+	}
+}
+
+func TestModuleNameSuccessPrintsCdStepWithRelativePath(t *testing.T) {
+	dir := t.TempDir()
+	runner := &fakeRunner{}
+	runner.onRun = func(call commandCall) (string, error) {
+		if call.name == "go" && reflect.DeepEqual(call.args, []string{"mod", "init", "github.com/crmin/test-data"}) {
+			writeFile(t, call.dir, "go.mod", "module github.com/crmin/test-data\n\ngo 1.20\n")
+		}
+		return "", nil
+	}
+
+	code, stdout, stderr := runForProject([]string{"github.com/crmin/test-data"}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	target := filepath.Join(dir, "test-data")
+	assertContainsAll(t, stdout, []string{
+		"PocketBase project initialized successfully: " + ansiCyan + target + ansiReset,
+		"Go to module directory:\n    " + ansiCyan + "cd test-data" + ansiReset,
+	})
+}
+
+func TestRunPrintsStepLogsInOrder(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
+	runner := &fakeRunner{}
+
+	code, stdout, stderr := runForProject([]string{"--jsvm", "--pb-version=v0.39.5"}, dir, runner)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+	}
+	assertInOrder(t, stdout, []string{
+		"Using Go module directory: " + dir,
+		"Installing PocketBase SDK: github.com/pocketbase/pocketbase@v0.39.5",
+		"Installing PocketBase JSVM plugin: github.com/pocketbase/pocketbase/plugins/jsvm@v0.39.5",
+		"Generating PocketBase starter files",
+		"Tidying Go module: go mod tidy",
+		"PocketBase project initialized successfully:",
 	})
 }
 
@@ -268,6 +453,27 @@ func assertCalls(t *testing.T, got []commandCall, want []commandCall) {
 	}
 }
 
+func assertContainsAll(t *testing.T, got string, wants []string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func assertInOrder(t *testing.T, got string, wants []string) {
+	t.Helper()
+	offset := 0
+	for _, want := range wants {
+		index := strings.Index(got[offset:], want)
+		if index < 0 {
+			t.Fatalf("output missing %q after offset %d:\n%s", want, offset, got)
+		}
+		offset += index + len(want)
+	}
+}
+
 func writeFile(t *testing.T, dir string, name string, content string) {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -278,3 +484,9 @@ func writeFile(t *testing.T, dir string, name string, content string) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 }
+
+const (
+	ansiCyan    = "\x1b[36m"
+	ansiMagenta = "\x1b[35m"
+	ansiReset   = "\x1b[0m"
+)

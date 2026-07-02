@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+
+	"github.com/fatih/color"
 )
 
 const (
@@ -117,21 +119,23 @@ func Run(args []string, env Env) int {
 		Runner:  runner,
 	})
 	if err != nil {
-		switch initErr := err.(type) {
-		case *InitError:
-			fmt.Fprint(stderr, initErr.Message)
-		case *CommandError:
-			fmt.Fprint(stderr, initErr.Output)
-		default:
-			fmt.Fprintln(stderr, err)
-		}
+		writeError(stderr, err)
 		return 1
 	}
 
+	logStep(stdout, "Generating PocketBase starter files")
 	if err := RenderProject(project, cfg, env.Templates); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+
+	logStep(stdout, "Tidying Go module: go mod tidy")
+	if err := runGoModTidy(project.Dir, runner); err != nil {
+		writeError(stderr, err)
+		return 1
+	}
+
+	printSuccessMessage(stdout, project)
 
 	return 0
 }
@@ -365,4 +369,44 @@ func (execRunner) Run(dir string, name string, args ...string) (string, error) {
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+func writeError(stderr io.Writer, err error) {
+	switch initErr := err.(type) {
+	case *InitError:
+		fmt.Fprint(stderr, initErr.Message)
+	case *CommandError:
+		fmt.Fprint(stderr, initErr.Output)
+	default:
+		fmt.Fprintln(stderr, err)
+	}
+}
+
+func printSuccessMessage(w io.Writer, project Project) {
+	cyan := colorText(color.FgCyan)
+	magenta := colorText(color.FgMagenta)
+
+	fmt.Fprintf(w, "\nPocketBase project initialized successfully: %s\n\n", cyan(project.Dir))
+
+	if project.FromModuleName {
+		fmt.Fprintf(w, "Go to module directory:\n    %s\n\n", cyan("cd "+project.RelativeDir))
+	}
+
+	fmt.Fprintf(w, "Start the server:\n    %s\n\n", cyan("go run . serve"))
+	fmt.Fprintf(w, "Create a collection snapshot:\n    %s\n\n", cyan("go run . migrate collections"))
+	fmt.Fprintf(
+		w,
+		"Create a superuser:\n    %s %s %s\n",
+		cyan("go run . superuser create"),
+		magenta("<user_email>"),
+		magenta("<user_password>"),
+	)
+}
+
+func colorText(attr color.Attribute) func(string) string {
+	c := color.New(attr)
+	c.EnableColor()
+	return func(value string) string {
+		return c.Sprint(value)
+	}
 }

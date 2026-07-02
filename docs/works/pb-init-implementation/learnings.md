@@ -26,6 +26,15 @@
 - Commit 3 재검증에서 binary smoke로 `--docker -mj --migration-dir=internal/migrations` 프로젝트 생성, `pb_migrations`/`pb_hooks` 생성, Dockerfile JSVM copy 라인, generated project `go build ./...`를 확인했다.
 - Commit 3 current directory mode smoke에서 빈 Go module에 초기화 후 `main.go`, `migrations/init.go`, `.gitignore` 생성과 generated project `go build ./...`를 확인했다.
 - Commit 4에서 영어 README를 작성했고 `go test ./...`, `go build ./...`, `go run . --help`, invalid `--migration-dir=.` stderr smoke, moduleName project generation smoke, current directory mode smoke가 모두 통과했다.
+- 2026-07-02 baseline `go test ./...`는 `internal/initcli/render_test.go`의 `.dockerignore` binary name newline 기대값에서 실패한다.
+- 현재 `moduleName` 경로의 대상 디렉토리가 이미 Go module이어도 `createModuleProject`가 항상 `go mod init`을 실행하므로 `go.mod already exists` 오류가 발생할 수 있다.
+- 현재 `PrepareProject`는 PocketBase SDK와 선택적 JSVM plugin `go get` 후 `go mod tidy`를 실행하지 않는다.
+- `go mod tidy`는 generated `main.go`가 렌더링된 이후 실행해야 PocketBase import가 유지된다.
+- `github.com/fatih/color`의 `Color.EnableColor()`를 사용하면 stdout이 terminal이 아니어도 테스트에서 ANSI foreground color 출력을 안정적으로 확인할 수 있다.
+- `moduleName` 대상 디렉토리가 이미 Go module인 경우 `go mod init`을 생략하고 current directory mode의 `--force` 기준을 재사용하면 `go.mod already exists` 오류를 피할 수 있다.
+- `.dockerignore.tmpl`과 `.gitignore.tmpl`의 마지막 template action 뒤에 newline을 유지해야 generated binary name이 `\napp\n` 형태로 검증된다.
+- ANSI color sequence를 smoke script에서 확인할 때는 `grep` 정규식보다 `grep -F` 고정 문자열 검색을 사용해야 `[`와 `]`를 regex 문자로 오해하지 않는다.
+- 2026-07-02 검증에서 `go mod tidy`, `go test ./...`, `go build ./...`, 신규 module 생성 smoke, 기존 target module guard smoke, `--force` smoke, generated project `go build ./...`가 통과했다.
 
 ## 재사용 키워드
 
@@ -36,3 +45,6 @@
 - migration-dir
 - jsvm
 - embed templates
+- go mod tidy
+- fatih/color
+- success next steps

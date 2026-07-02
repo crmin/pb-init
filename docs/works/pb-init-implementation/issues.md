@@ -29,3 +29,9 @@
 - Commit 3 smoke에서 `go run /Users/crmin/workspace/crmin/pb-init ...`를 임시 디렉토리에서 직접 실행하면 Go tool이 현재 디렉토리의 module을 찾지 못해 실패했다.
   - 원인: 로컬 absolute source path 방식은 임시 디렉토리의 module context 없이 실행되어 Go tool이 source module을 해석하지 못함.
   - 해결: 같은 실패를 반복하지 않고 로컬 binary를 빌드한 뒤 임시 디렉토리에서 실행해 생성 결과와 generated project build를 검증했다.
+- 2026-07-02 기준 `go test ./...`가 `TestRenderDockerFilesUseCgoAndBinaryName`에서 실패했다.
+  - 원인: `.dockerignore.tmpl` 마지막 binary name 뒤 trailing newline이 없어 테스트 기대값과 맞지 않았음.
+  - 해결: `.dockerignore.tmpl`과 `.gitignore.tmpl`의 마지막 template action 뒤 newline을 유지하도록 수정했고, 중간 `go test ./...` 통과를 확인했다.
+- 2026-07-02 smoke script의 ANSI color grep 확인이 실패했다.
+  - 원인: ANSI escape sequence의 `[`와 `]`를 `grep` 기본 정규식 문자로 해석해 `brackets ([ ]) not balanced` 오류가 발생함.
+  - 해결: 같은 방식을 반복하지 않고 `grep -F` 고정 문자열 검색으로 변경해 신규 module, existing module guard, `--force`, generated project build smoke를 통과시켰다.

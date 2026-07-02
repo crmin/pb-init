@@ -22,6 +22,8 @@ go run github.com/crmin/pb-init 'github.com/crmin/test-data'
 ```
 현재 디렉토리 아래에 `test-data`라는 디렉토리가 생성되고, 해당 디렉토리에서 `go mod init github.com/crmin/test-data`가 실행됨.
 
+만약 `moduleName`이 전달되었고 대상 디렉토리가 이미 go module인 경우에는 `go mod init`을 다시 실행하지 않음. 이 때 대상 디렉토리의 `go.sum` 파일이 존재하거나 `*.go` 파일이 존재하는 경우에는 아래 current directory go module 처리와 동일하게 `--force` flag를 요구함. 대상 디렉토리가 존재하지 않거나 go module이 아닌 경우에는 기존처럼 대상 디렉토리를 생성하고 `go mod init {moduleName}`을 실행함.
+
 만약 `moduleName`이 전달되지 않았다면, 현재 디렉토리 상황에 따라 동작이 결정되어야 함.
 다음 과정을 통해 go module인지를 확인 할 수 있음:
 - 현재 디렉토리에 `go.mod` 파일이 존재함
@@ -103,6 +105,7 @@ Cannot use -h in a short flag bundle.
 - 에러 발생 시 CLI가 생성하는 에러 메시지와 help message는 stderr로 출력하고 exit code 1로 종료함.
 - 외부 명령 실패 시 전달하는 command output은 stderr로 출력하고 exit code 1로 종료함.
 - `--force`가 제공되어 기존 go module 초기화를 계속 진행한다는 안내 메시지는 오류가 아니므로 stdout으로 출력함.
+- 성공 경로의 단계별 진행 로그와 완료 안내 메시지는 stdout으로 출력함.
 
 # 동작
 
@@ -154,6 +157,52 @@ Cannot use -h in a short flag bundle.
     - `.dockerignore.tmpl`에서 사용되는 template variables
         - `{{.BinaryName}}`: module path에서 가장 마지막 경로 요소. 예를 들어 module path가 `github.com/username/app`이라면 `app`이 됨. 또는 module path가 경로 구분 없는 `test`라면 `test`가 됨. 만약 이 값이 `pocketbase`라면 이미 존재하는 값이므로 `{{.BinaryName}}`을 empty string으로 설정
 7. 프로젝트 모듈 디렉토리에 `.gitignore` 파일을 생성. 내용은 `templates/.gitignore.tmpl` 템플릿을 사용. `.dockerignore.tmpl`과 같은 template variable을 사용함
+8. 프로젝트 파일 생성 이후 프로젝트 모듈 디렉토리에서 `go mod tidy`를 실행함. 이 단계는 pocketbase sdk 설치 이후 수행되며 generated Go file의 import가 반영된 상태에서 실행되어야 함. 만약 실행에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
+9. 실행 단계에 따라 다음과 같은 형태의 진행 로그를 stdout으로 출력함. `--jsvm` 관련 로그와 `go mod init` 로그는 해당 단계가 실제로 실행되는 경우에만 출력함.
+    ```text
+    Using Go module directory: {module abs path}
+    Preparing module directory: {module abs path}
+    Initializing Go module: {moduleName}
+    Installing PocketBase SDK: github.com/pocketbase/pocketbase@{pb-version}
+    Installing PocketBase JSVM plugin: github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}
+    Generating PocketBase starter files
+    Tidying Go module: go mod tidy
+    ```
+10. 설정이 완료되면 프로젝트 모듈 디렉토리 경로와 다음 실행 단계를 stdout으로 출력함. 색상 출력은 `github.com/fatih/color`를 사용함.
+    - `moduleName`이 전달되지 않은 경우:
+        ```text
+        PocketBase project initialized successfully: {module abs path}
+
+        Start the server:
+            go run . serve
+
+        Create a collection snapshot:
+            go run . migrate collections
+
+        Create a superuser:
+            go run . superuser create <user_email> <user_password>
+        ```
+        - `{module abs path}`, `go run . serve`, `go run . migrate collections`, `go run . superuser create`는 foreground=cyan으로 출력함.
+        - `<user_email>`과 `<user_password>`는 foreground=magenta로 출력함.
+    - `moduleName`이 전달된 경우:
+        ```text
+        PocketBase project initialized successfully: {module abs path}
+
+        Go to module directory:
+            cd {module relative path}
+
+        Start the server:
+            go run . serve
+
+        Create a collection snapshot:
+            go run . migrate collections
+
+        Create a superuser:
+            go run . superuser create <user_email> <user_password>
+        ```
+        - `{module abs path}`, `cd {module relative path}`, `go run . serve`, `go run . migrate collections`, `go run . superuser create`는 foreground=cyan으로 출력함.
+        - `<user_email>`과 `<user_password>`는 foreground=magenta로 출력함.
+        - `{module relative path}`는 명령 실행 디렉토리 기준 프로젝트 모듈 디렉토리의 상대 경로로 설정함.
 
 # Build
 
