@@ -16,7 +16,7 @@ serve *args:
 migrate *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    ./pocketbase migrate collections "$@"
+    go run . migrate collections "$@"
 
 # Create a collection snapshot and keep only the newest migration file.
 snapshot *args:
@@ -49,9 +49,9 @@ snapshot *args:
     done
 
     if [[ ${#migrate_args[@]} -eq 0 ]]; then
-        printf 'y\n' | ./pocketbase migrate collections
+        printf 'y\n' | go run . migrate collections
     else
-        printf 'y\n' | ./pocketbase migrate collections "${migrate_args[@]}"
+        printf 'y\n' | go run . migrate collections "${migrate_args[@]}"
     fi
 
     if [[ ! -d "$migration_dir" ]]; then

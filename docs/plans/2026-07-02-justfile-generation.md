@@ -99,7 +99,7 @@ serve *args:
 migrate *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    ./pocketbase migrate collections "$@"
+    go run . migrate collections "$@"
 
 # Create a collection snapshot and keep only the newest migration file.
 snapshot *args:
@@ -132,9 +132,9 @@ snapshot *args:
     done
 
     if [[ ${#migrate_args[@]} -eq 0 ]]; then
-        printf 'y\n' | ./pocketbase migrate collections
+        printf 'y\n' | go run . migrate collections
     else
-        printf 'y\n' | ./pocketbase migrate collections "${migrate_args[@]}"
+        printf 'y\n' | go run . migrate collections "${migrate_args[@]}"
     fi
 
     if [[ ! -d "$migration_dir" ]]; then
@@ -313,7 +313,7 @@ upgrade version="":
 - `--just`만 있고 `--docker`가 없으면 `.dockerignore`는 기존 계약대로 생성되지 않는다.
 - 생성된 module에서 `just`는 `just --list`를 실행하고 `default` recipe 자체는 목록에 표시하지 않는다.
 - `just serve [args...]`는 `go run . serve [args...]`를 실행한다.
-- `just migrate [args...]`는 `./pocketbase migrate collections [args...]`를 실행한다.
+- `just migrate [args...]`는 `go run . migrate collections [args...]`를 실행한다.
 - `just snapshot [-y] [-- args...]`는 collection snapshot을 만들고 configured migration directory의 최신 timestamp migration `.go` 하나만 남기며, `-y`가 없으면 삭제 전 확인 prompt를 표시한다.
 - `just upgrade [version]`은 요구된 version 분기에 따라 `go get -u github.com/pocketbase/pocketbase...`를 실행하거나 지정 오류를 stderr로 출력한다.
 

@@ -164,11 +164,11 @@ Cannot use -h in a short flag bundle.
     - 모든 recipe 내부 command는 실행 중 just가 실제 실행 명령을 출력하지 않도록 작성되어야 함. 단, command가 직접 출력하는 stdout과 stderr는 그대로 표시되어야 함.
     - `just` 또는 `just default`: `[private]`로 숨겨진 default recipe가 `just --list`를 실행함. default recipe 자체는 `just --list` 결과에 표시되지 않아야 함.
     - `just serve [args...]`: `go run . serve [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `go run . serve`의 argument로 전달함.
-    - `just migrate [args...]`: `./pocketbase migrate collections [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `./pocketbase migrate collections`의 argument로 전달함.
+    - `just migrate [args...]`: `go run . migrate collections [args...]`를 실행함. `args`는 공백 포함 값을 보존해 `go run . migrate collections`의 argument로 전달함. 생성 직후 별도 `pocketbase` binary build 없이 동작해야 함.
     - `{{.MigrationDir}}`: `--migration-dir` 옵션의 값. `just snapshot`에서 collection snapshot 생성 후 정리 대상 디렉토리로 사용됨.
-    - `just snapshot [-y] [-- args...]`: `printf 'y\n' | ./pocketbase migrate collections [args...]`를 실행해 collection snapshot을 생성한 뒤 `--migration-dir` 경로의 최신 snapshot 파일만 유지함.
+    - `just snapshot [-y] [-- args...]`: `printf 'y\n' | go run . migrate collections [args...]`를 실행해 collection snapshot을 생성한 뒤 `--migration-dir` 경로의 최신 snapshot 파일만 유지함. 생성 직후 별도 `pocketbase` binary build 없이 동작해야 함.
         - `--` 앞의 `-y`는 recipe 전용 flag로 처리해 삭제 확인 prompt를 생략함.
-        - `--` 뒤에 전달된 값은 `-y`라도 `./pocketbase migrate collections`의 argument로 전달함.
+        - `--` 뒤에 전달된 값은 `-y`라도 `go run . migrate collections`의 argument로 전달함.
         - `--migration-dir` 경로의 디렉토리가 없으면 collection snapshot 생성 이후 추가 삭제 작업 없이 정상 종료함.
         - `--migration-dir` 경로의 `*.go` 파일 중 `{unix_timestamp_in_sec}_{action_description}.go` 형식이며 `_` 앞 첫 번째 chunk가 숫자인 파일을 timestamp migration file로 판단함.
         - timestamp가 가장 큰 파일 하나를 최신 migration file로 판단함. timestamp가 같은 파일이 여러 개면 파일명 정렬 기준으로 마지막으로 처리된 파일을 최신 파일로 판단함.

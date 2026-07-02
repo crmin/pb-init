@@ -159,6 +159,24 @@ func TestRenderWritesJustfileWhenJustEnabled(t *testing.T) {
 	}
 }
 
+func TestRenderJustfileUsesGoRunForMigrationCommands(t *testing.T) {
+	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir, Just: true})
+
+	justfile := readFile(t, dir, "justfile")
+	for _, want := range []string{
+		`go run . migrate collections "$@"`,
+		`printf 'y\n' | go run . migrate collections`,
+		`printf 'y\n' | go run . migrate collections "${migrate_args[@]}"`,
+	} {
+		if !strings.Contains(justfile, want) {
+			t.Fatalf("justfile missing %q:\n%s", want, justfile)
+		}
+	}
+	if strings.Contains(justfile, "./pocketbase migrate collections") {
+		t.Fatalf("justfile should not depend on a prebuilt ./pocketbase binary:\n%s", justfile)
+	}
+}
+
 func TestRenderJustfileUsesConfiguredMigrationDirInSnapshot(t *testing.T) {
 	dir := renderFixture(t, Config{MigrationDir: "internal/migrations", Just: true})
 

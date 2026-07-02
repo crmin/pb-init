@@ -60,7 +60,7 @@ just snapshot -y
 
 현재 문제:
 
-- `./pocketbase migrate collections`는 generated app의 `migratecmd.Config{Dir: "internal/migrations"}`에 따라 `internal/migrations`에 migration 파일을 생성한다.
+- 변경 당시 migrate command는 generated app의 `migratecmd.Config{Dir: "internal/migrations"}`에 따라 `internal/migrations`에 migration 파일을 생성했다.
 - generated `justfile`은 `migrations` 디렉토리만 확인하고 정리하므로 최신 migration 하나만 유지한다는 목표를 custom migration dir에서 달성하지 못한다.
 
 `--recommend` 관련 현재 문제:
