@@ -5,9 +5,9 @@ import (
 	"os"
 
 	_ "{{.ModulePath}}/{{.MigrationDir}}"
-	"github.com/pocketbase/pocketbase"
-{{ if .JSVMImport }}	"github.com/pocketbase/pocketbase/plugins/jsvm"
-{{ end }}	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"{{.PocketBaseModule}}"
+{{ if .JSVMImport }}	"{{.PocketBaseModule}}/plugins/jsvm"
+{{ end }}	"{{.PocketBaseModule}}/plugins/migratecmd"
 )
 
 func main() {

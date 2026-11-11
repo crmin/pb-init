@@ -200,3 +200,10 @@ func assertErrMessage(t *testing.T, err *UsageError, want string) {
 		t.Fatalf("unexpected message:\nwant: %q\n got: %q", want, err.Message)
 	}
 }
+
+func TestHelpMessageDocumentsPocketBaseModulePath(t *testing.T) {
+	help := HelpMessage("github.com/crmin/pb-init")
+	if !strings.Contains(help, "go get ganigeorgiev.com/pocketbase/pocketbase@<version>") {
+		t.Fatalf("help is missing the new PocketBase module path: %s", help)
+	}
+}
