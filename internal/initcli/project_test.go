@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -74,7 +78,7 @@ func TestCurrentModuleWithoutGoSumOrGoFilesUsesCurrentDirectory(t *testing.T) {
 		"PocketBase project initialized successfully:",
 	})
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
 		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
 	})
@@ -136,7 +140,7 @@ func TestCurrentModuleWithForcePrintsWarning(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
 		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
 	})
@@ -180,7 +184,7 @@ func TestModuleNameCreatesLastPathDirectoryAndRunsGoModInit(t *testing.T) {
 	target := filepath.Join(dir, "test-data")
 	assertCalls(t, runner.calls, []commandCall{
 		{dir: target, name: "go", args: []string{"mod", "init", "github.com/crmin/test-data"}},
-		{dir: target, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: target, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
 		{dir: target, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
@@ -247,7 +251,7 @@ func TestModuleNameExistingModuleWithForcePrintsWarningAndSkipsGoModInit(t *test
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: target, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: target, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
 		{dir: target, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
@@ -271,7 +275,7 @@ func TestModuleNameExistingEmptyModuleSkipsGoModInit(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: target, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: target, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
 		{dir: target, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
@@ -323,7 +327,7 @@ func TestJSVMRunsPluginGoGetForTransitiveDependencies(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
 		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "/plugins/jsvm@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
@@ -355,7 +359,7 @@ func TestPocketBaseModulePathForVersion(t *testing.T) {
 				t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
 			}
 			assertCalls(t, runner.calls, []commandCall{
-				{dir: dir, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@" + tt.query}},
+				{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@" + tt.query}},
 				{dir: dir, name: "go", args: []string{"get", tt.path + "@" + tt.version}},
 				{dir: dir, name: "go", args: []string{"get", tt.path + "/plugins/jsvm@" + tt.version}},
 				{dir: dir, name: "go", args: []string{"mod", "tidy"}},
@@ -387,7 +391,7 @@ func TestPocketBaseModulePathUsesExistingRequirementForPatchAndUpgrade(t *testin
 			}
 			assertCalls(t, runner.calls, []commandCall{
 				{dir: dir, name: "go", args: []string{"mod", "edit", "-json"}},
-				{dir: dir, name: "go", args: []string{"list", "-m", "-json", oldPocketBasePath + "@" + query}},
+				{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", oldPocketBasePath + "@" + query}},
 			})
 		})
 	}
@@ -397,8 +401,8 @@ func TestPocketBaseModulePathRetriesLegacyRevision(t *testing.T) {
 	dir := t.TempDir()
 	metadata := writePocketBaseMetadata(t, oldPocketBasePath, "v0.39.5")
 	runner := &fakeRunner{onOutput: func(call commandCall) (string, error) {
-		if call.args[3] == newPocketBasePath+"@legacy-ref" {
-			return "go: invalid version: unknown revision legacy-ref\n", errors.New("exit status 1")
+		if call.args[len(call.args)-1] == newPocketBasePath+"@legacy-ref" {
+			return "go: " + newPocketBasePath + "@legacy-ref: invalid version: unknown revision legacy-ref\n", errors.New("exit status 1")
 		}
 		return metadata, nil
 	}}
@@ -408,9 +412,104 @@ func TestPocketBaseModulePathRetriesLegacyRevision(t *testing.T) {
 		t.Fatalf("resolved %s@%s, err=%v", path, version, err)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@legacy-ref"}},
-		{dir: dir, name: "go", args: []string{"list", "-m", "-json", oldPocketBasePath + "@legacy-ref"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@legacy-ref"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", oldPocketBasePath + "@legacy-ref"}},
 	})
+}
+
+func TestPocketBaseLookupWithVendor(t *testing.T) {
+	proxyDir := t.TempDir()
+	const version = "v0.42.0"
+	writeProxyRelease(t, proxyDir, newPocketBasePath, version)
+
+	for _, mode := range []string{"module", "workspace"} {
+		t.Run(mode, func(t *testing.T) {
+			usePocketBaseProxy(t, fileProxyURL(proxyDir))
+			root := t.TempDir()
+			dir := filepath.Join(root, "app")
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.26.1\n")
+			if mode == "workspace" {
+				writeFile(t, root, "go.work", "go 1.26.1\n\nuse ./app\n")
+				writeFile(t, root, "vendor/modules.txt", "## workspace\n")
+				t.Setenv("GOWORK", filepath.Join(root, "go.work"))
+			} else {
+				writeFile(t, dir, "vendor/modules.txt", "")
+			}
+
+			path, gotVersion, err := resolvePocketBase(dir, "latest", execRunner{})
+			if err != nil || path != newPocketBasePath || gotVersion != version {
+				t.Fatalf("resolved %s@%s, err=%v", path, gotVersion, err)
+			}
+		})
+	}
+}
+
+func TestPocketBaseLookupWithFileProxy(t *testing.T) {
+	proxyDir := t.TempDir()
+	const version = "v0.39.5"
+	writeProxyRelease(t, proxyDir, oldPocketBasePath, version)
+
+	for _, query := range []string{version, "v0.39"} {
+		t.Run(query, func(t *testing.T) {
+			usePocketBaseProxy(t, fileProxyURL(proxyDir))
+			dir := t.TempDir()
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.26.1\n")
+
+			path, gotVersion, err := resolvePocketBase(dir, query, execRunner{})
+			if err != nil || path != oldPocketBasePath || gotVersion != version {
+				t.Fatalf("resolved %s@%s, err=%v", path, gotVersion, err)
+			}
+		})
+	}
+}
+
+func TestPocketBaseLookupWithHTTPProxy(t *testing.T) {
+	proxyDir := t.TempDir()
+	const version = "v0.39.5"
+	writeProxyRelease(t, proxyDir, oldPocketBasePath, version)
+	files := http.FileServer(http.Dir(proxyDir))
+
+	for _, tt := range []struct {
+		name     string
+		status   int
+		fallback bool
+	}{
+		{"not found", http.StatusNotFound, true},
+		{"gone", http.StatusGone, true},
+		{"forbidden", http.StatusForbidden, false},
+		{"unavailable", http.StatusServiceUnavailable, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var legacyRequested atomic.Bool
+			proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/"+oldPocketBasePath+"/") {
+					legacyRequested.Store(true)
+					files.ServeHTTP(w, r)
+					return
+				}
+				w.WriteHeader(tt.status)
+				if !tt.fallback {
+					_, _ = w.Write([]byte("upstream 404 Not Found: unknown revision"))
+				}
+			}))
+			defer proxy.Close()
+			usePocketBaseProxy(t, proxy.URL)
+			dir := t.TempDir()
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.26.1\n")
+
+			path, gotVersion, err := resolvePocketBase(dir, version, execRunner{})
+			if tt.fallback {
+				if err != nil || path != oldPocketBasePath || gotVersion != version {
+					t.Fatalf("resolved %s@%s, err=%v", path, gotVersion, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), http.StatusText(tt.status)) {
+				t.Fatalf("expected %s error, got %v", http.StatusText(tt.status), err)
+			}
+			if got := legacyRequested.Load(); got != tt.fallback {
+				t.Fatalf("legacy path requested: %v; want %v", got, tt.fallback)
+			}
+		})
+	}
 }
 
 func TestPocketBaseLookupFailureStopsBeforeInstallation(t *testing.T) {
@@ -425,7 +524,7 @@ func TestPocketBaseLookupFailureStopsBeforeInstallation(t *testing.T) {
 		t.Fatalf("got exit code %d and stderr %q", code, stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"list", "-m", "-json", newPocketBasePath + "@v0.41.0"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@v0.41.0"}},
 	})
 }
 
@@ -546,7 +645,7 @@ func runForProject(t *testing.T, args []string, dir string, runner *fakeRunner) 
 	if runner.onOutput == nil {
 		metadata := writePocketBaseMetadata(t, newPocketBasePath, "v0.42.0")
 		runner.onOutput = func(call commandCall) (string, error) {
-			if !reflect.DeepEqual(call.args, []string{"list", "-m", "-json", newPocketBasePath + "@latest"}) {
+			if !reflect.DeepEqual(call.args, []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}) {
 				t.Fatalf("unexpected output command: %#v", call)
 			}
 			return metadata, nil
@@ -606,6 +705,29 @@ func writePocketBaseMetadata(t *testing.T, modulePath string, version string) st
 		t.Fatal(err)
 	}
 	return string(metadata)
+}
+
+func writeProxyRelease(t *testing.T, dir string, modulePath string, version string) {
+	t.Helper()
+	metadata := `{"Version":"` + version + `","Time":"2026-10-26T00:00:00Z"}`
+	writeFile(t, dir, modulePath+"/@latest", metadata)
+	writeFile(t, dir, modulePath+"/@v/list", version+"\n")
+	writeFile(t, dir, modulePath+"/@v/"+version+".info", metadata)
+	writeFile(t, dir, modulePath+"/@v/"+version+".mod", "module "+modulePath+"\n\ngo 1.26.1\n")
+}
+
+func fileProxyURL(dir string) string {
+	return (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(dir), "/")}).String()
+}
+
+func usePocketBaseProxy(t *testing.T, proxy string) {
+	t.Helper()
+	t.Setenv("GOPROXY", proxy)
+	t.Setenv("GONOPROXY", "none")
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOMODCACHE", t.TempDir())
+	t.Setenv("GOFLAGS", "")
+	t.Setenv("GOWORK", "off")
 }
 
 func assertCalls(t *testing.T, got []commandCall, want []commandCall) {

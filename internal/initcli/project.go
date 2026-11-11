@@ -114,13 +114,13 @@ func resolvePocketBase(dir string, query string, runner CommandRunner) (string, 
 		tryLegacy = true
 	}
 
-	var release moduleVersion
-	err := readGoJSON(dir, runner, &release, "list", "-m", "-json", queryPath+"@"+query)
-	if tryLegacy && versionNotFound(err) {
-		if legacyErr := readGoJSON(dir, runner, &release, "list", "-m", "-json", legacyPocketBaseModule+"@"+query); legacyErr != nil {
+	release, err := queryModuleVersion(dir, queryPath, query, runner)
+	if tryLegacy && versionNotFound(err, queryPath) {
+		legacyRelease, legacyErr := queryModuleVersion(dir, legacyPocketBaseModule, query, runner)
+		if legacyErr != nil {
 			return "", "", errors.Join(err, legacyErr)
 		}
-		err = nil
+		release, err = legacyRelease, nil
 	}
 	if err != nil {
 		return "", "", err
@@ -138,6 +138,13 @@ func resolvePocketBase(dir string, query string, runner CommandRunner) (string, 
 		return "", "", fmt.Errorf("unexpected PocketBase module path %q for %s", modulePath, release.Version)
 	}
 	return modulePath, release.Version, nil
+}
+
+func queryModuleVersion(dir string, modulePath string, query string, runner CommandRunner) (moduleVersion, error) {
+	var release moduleVersion
+	// Module queries need metadata outside vendor, including in Go workspaces.
+	err := readGoJSON(dir, runner, &release, "list", "-mod=readonly", "-m", "-json", modulePath+"@"+query)
+	return release, err
 }
 
 func currentPocketBaseModule(dir string, runner CommandRunner) (string, error) {
@@ -159,11 +166,51 @@ func currentPocketBaseModule(dir string, runner CommandRunner) (string, error) {
 	return modulePath, nil
 }
 
-func versionNotFound(err error) bool {
+func versionNotFound(err error, modulePath string) bool {
 	var commandErr *CommandError
-	return errors.As(err, &commandErr) &&
-		(strings.Contains(commandErr.Output, "unknown revision") ||
-			strings.Contains(commandErr.Output, "no matching versions"))
+	if !errors.As(err, &commandErr) {
+		return false
+	}
+	for _, line := range strings.Split(commandErr.Output, "\n") {
+		diagnostic, ok := strings.CutPrefix(line, "go: ")
+		if !ok {
+			continue
+		}
+		target, detail, ok := strings.Cut(strings.TrimPrefix(diagnostic, "module "), ": ")
+		if !ok || (target != modulePath && !strings.HasPrefix(target, modulePath+"@")) {
+			continue
+		}
+		// Check the Go diagnostic itself. The proxy's response body can contain
+		// arbitrary text even when the status is a permission or server error.
+		detail = strings.TrimPrefix(detail, "invalid version: ")
+		detail = strings.TrimPrefix(detail, "invalid pseudo-version: ")
+		return strings.HasPrefix(detail, "unknown revision ") ||
+			strings.HasPrefix(detail, "no matching versions for query ") ||
+			proxyVersionNotFound(detail, modulePath)
+	}
+	return false
+}
+
+func proxyVersionNotFound(detail string, modulePath string) bool {
+	request, ok := strings.CutPrefix(detail, "reading ")
+	if !ok {
+		return false
+	}
+	address, reason, ok := strings.Cut(request, ": ")
+	if !ok || !strings.Contains(address, "/"+modulePath+"/@v/") {
+		return false
+	}
+	if strings.HasPrefix(address, "file://") {
+		switch reason {
+		case "no such file or directory", "The system cannot find the file specified.", "The system cannot find the path specified.":
+			return true
+		}
+	}
+	if strings.HasPrefix(address, "https://") || strings.HasPrefix(address, "http://") {
+		status, _, _ := strings.Cut(reason, " ")
+		return status == "404" || status == "410"
+	}
+	return false
 }
 
 func readGoJSON(dir string, runner CommandRunner, dst any, args ...string) error {

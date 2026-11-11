@@ -16,3 +16,10 @@
 - 기존 v0.39.5 프로젝트에서 `--force --pb-version=patch`로 v0.39.11을 설치하고 빌드했다. 별도로 작성한 마이그레이션 파일 내용도 비교했다.
 - 생성한 새 경로의 v0.41.0 프로젝트에서 `just upgrade 0.41.1` 실행 후 모듈 버전과 빌드를 확인했다.
 - README 변경 문단은 Humanize Korean light 경로에서 검증을 통과했다.
+
+## 리뷰 반영 검증
+
+- 변경 전에는 실제 Go 모듈과 Go workspace의 자동 vendor 모드에서 조회가 실패했다. 변경 후 두 환경에서 통과했다.
+- 임시 프록시에서 HTTP 404/410, 파일 메타데이터 부재, HTTP 403/503을 검증했다. 구버전은 정확한 버전과 접두 쿼리로 조회했다.
+- 실제 v0.42.0 SDK와 JSVM 프로젝트에 `go mod vendor`를 실행한 뒤 `--force --pb-version=v0.42.0 --jsvm`으로 초기화하고 빌드했다.
+- `go test -count=1 ./...`, `go vet ./...`, `go build ./...`가 통과했다.

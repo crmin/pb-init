@@ -112,8 +112,9 @@ Cannot use -h in a short flag bundle.
 
 1. 프로젝트 모듈 디렉토리에서 `--pb-version` 쿼리를 조회하고 PocketBase SDK를 설치함.
     - 기본값 `latest`는 `ganigeorgiev.com/pocketbase/pocketbase`에서 조회함. 버전 또는 리비전은 새 경로에서 먼저 조회하고, 버전이나 리비전을 찾지 못한 경우 `github.com/pocketbase/pocketbase`에서 다시 조회함.
+    - 모듈 프록시의 HTTP 404/410과 파일 프록시의 버전 메타데이터 부재는 재조회 사유로 처리함. 프록시 권한 오류와 서버 장애는 재조회 없이 전달함.
     - `patch`와 `upgrade`는 프로젝트 `go.mod`가 요구하는 PocketBase 경로에서 조회함. 두 경로를 모두 요구하거나 PocketBase 요구가 없으면 새 경로를 사용함.
-    - `go list -m -json` 결과의 `Version`을 `{pb-version}`으로, `GoMod` 파일의 module 선언을 `{pb-module}`로 사용함. 모듈 경로는 새 경로 또는 GitHub 경로 중 하나여야 하며, `latest`의 모듈은 새 경로여야 함.
+    - `go list -mod=readonly -m -json` 결과의 `Version`을 `{pb-version}`으로, `GoMod` 파일의 module 선언을 `{pb-module}`로 사용함. `vendor/`가 있는 모듈이나 워크스페이스에서도 모듈 메타데이터를 조회함. 모듈 경로는 새 경로 또는 GitHub 경로 중 하나여야 하며, `latest`의 모듈은 새 경로여야 함.
     - `go get {pb-module}@{pb-version}`으로 SDK를 설치함. `--jsvm`이 지정되면 `go get {pb-module}/plugins/jsvm@{pb-version}`도 실행해 JSVM 의존성을 설치함.
     - 조회 또는 설치에 실패하면 Go 명령의 진단이나 메타데이터 오류를 stderr로 출력하고 종료함. (exit=1)
     - `moduleName`이 전달되어 `go mod init` 실행에 실패한 경우에도 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
