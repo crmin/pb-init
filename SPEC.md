@@ -58,7 +58,7 @@ go run github.com/crmin/pb-init 'github.com/crmin/test-data'
 ## Optional Arguments
 
 - `--migration-dir={dirName}`: migration 파일이 위치할 디렉토리 경로를 지정합니다. 이 값은 pocketbase project module directory를 기준으로 하는 하위 상대 경로여야 하며, 절대 경로, current directory reference(`.`), parent directory reference(`..`)를 포함할 수 없습니다. 주의: `--jsvm`과 함께 실행되는 경우에도 이 경로가 js migration directory에 영향을 주지 않습니다. 이 디렉토리에서는 go migration file이 관리되고 go build 결과에 포함됩니다. js migration 파일은 이 값과 무관하게 `pb_migrations` 경로에서 관리됩니다. default=`migrations`
-- `--pb-version`: pocketbase sdk version을 지정합니다. default=`latest`. `none` 값은 사용할 수 없으며 다음 에러 메시지를 stderr로 출력하고 종료합니다.
+- `--pb-version`: PocketBase SDK 버전 또는 Go 버전 쿼리를 지정합니다. 기본값은 `latest`입니다. `none` 값은 사용할 수 없으며 다음 에러 메시지를 stderr로 출력하고 종료합니다.
     ```
     Invalid --pb-version: none is not allowed. Provide a PocketBase version or omit --pb-version to use latest.
 
@@ -110,8 +110,13 @@ Cannot use -h in a short flag bundle.
 
 # 동작
 
-1. 프로젝트 모듈 디렉토리에 pocketbase sdk 설치. `go get github.com/pocketbase/pocketbase@{pb-version}` 명령을 실행함. `{pb-version}`은 `--pb-version` flag로 전달된 값이 존재하면 해당 값으로, 존재하지 않으면 `latest`로 설정됨. 만약 설치에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
-    - `--jsvm` flag가 전달된 경우 `go get github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}` 명령을 추가로 실행해 jsvm plugin의 transitive dependency가 generated project의 `go.sum`에 포함되도록 함. 만약 설치에 실패했다면 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
+1. 프로젝트 모듈 디렉토리에서 `--pb-version` 쿼리를 조회하고 PocketBase SDK를 설치함.
+    - 기본값 `latest`는 `ganigeorgiev.com/pocketbase/pocketbase`에서 조회함. 버전 또는 리비전은 새 경로에서 먼저 조회하고, 버전이나 리비전을 찾지 못한 경우 `github.com/pocketbase/pocketbase`에서 다시 조회함.
+    - 모듈 프록시의 HTTP 404/410과 파일 프록시의 버전 메타데이터 부재는 재조회 사유로 처리함. 프록시 권한 오류와 서버 장애는 재조회 없이 전달함.
+    - `patch`와 `upgrade`는 프로젝트 `go.mod`가 요구하는 PocketBase 경로에서 조회함. 두 경로를 모두 요구하거나 PocketBase 요구가 없으면 새 경로를 사용함.
+    - `go list -mod=readonly -m -json` 결과의 `Version`을 `{pb-version}`으로, `GoMod` 파일의 module 선언을 `{pb-module}`로 사용함. `vendor/`가 있는 모듈이나 워크스페이스에서도 모듈 메타데이터를 조회함. 모듈 경로는 새 경로 또는 GitHub 경로 중 하나여야 하며, `latest`의 모듈은 새 경로여야 함.
+    - `go get {pb-module}@{pb-version}`으로 SDK를 설치함. `--jsvm`이 지정되면 `go get {pb-module}/plugins/jsvm@{pb-version}`도 실행해 JSVM 의존성을 설치함.
+    - 조회 또는 설치에 실패하면 Go 명령의 진단이나 메타데이터 오류를 stderr로 출력하고 종료함. (exit=1)
     - `moduleName`이 전달되어 `go mod init` 실행에 실패한 경우에도 명령 실행 결과로 반환된 에러 메시지를 stderr로 그대로 출력하고 종료. (exit=1)
     - `--migration-dir` 값이 절대 경로인 경우 다음 에러 메시지를 stderr로 출력하고 종료.
         ```
@@ -133,6 +138,7 @@ Cannot use -h in a short flag bundle.
         ```
 2. 지정된 flag에 따라 `templates/main.go.tmpl` 내용을 templating. 다음 template 변수가 사용됨.
     - `{{.ModulePath}}`: `go.mod` 파일에서 `module ` 뒤에 존재하는 경로로 대체되어야 함. 예를 들어 `go.mod` 파일에서 `module github.com/crmin/pb-init` 내용을 찾을 수 있을 때, `{{.ModulePath}}`는 `github.com/crmin/pb-init`로 대체되어야 함
+    - `{{.PocketBaseModule}}`: SDK 설치에 사용한 `{pb-module}`. PocketBase, migratecmd, JSVM import에 적용함.
     - `{{.MigrationDir}}`: `--migration-dir` 옵션의 값. (또는 default value `migrations`)
     - `{{.JSVMImport}}`: `--jsvm` flag가 전달되었다면 이 값을 true로 설정. 아니면 false로 설정. template에서는 `{{- if .JSVMImport}}~~import 경로~~{{- end}}` 형태로 사용 됨
     - `{{.AutoMigration}}`: `--auto-migration` flag가 전달되었다면 이 값을 `"true"`로 설정. 아니면 `"false"`로 설정. 주의: templating으로 완성된 go code에서 boolean type으로 인식되어야하므로 AutoMigration 값 자체가 boolean type이 되면 안됨
@@ -178,12 +184,12 @@ Cannot use -h in a short flag bundle.
             - `y`가 입력된 경우 해당 파일을 삭제하고 진행함.
             - `n`이 입력된 경우 `Collection snapshot creation cancelled by user.`를 출력하고 정상 종료함. (exit=0)
             - 다른 값 또는 빈 값이 입력된 경우 prompt를 다시 출력하고 다시 입력 받음.
-    - `just upgrade [version]`: PocketBase Go module dependency를 upgrade함.
-        - `version`이 지정되지 않은 경우 `go get -u github.com/pocketbase/pocketbase`를 실행함.
-        - `version`이 `latest`인 경우 `go get -u github.com/pocketbase/pocketbase@latest`를 실행함.
+    - `just upgrade [version]`: 프로젝트 생성 시 선택한 `{pb-module}` 경로의 PocketBase 의존성을 업그레이드함.
+        - `version`이 지정되지 않은 경우 `go get -u {pb-module}`을 실행함.
+        - `version`이 `latest`인 경우 `go get -u {pb-module}@latest`를 실행함.
         - `version`이 `none`인 경우 `Invalid version: "none" is not allowed.`를 stderr로 출력하고 exit=1로 종료함.
-        - `version`이 `v`로 시작하는 경우 `go get -u github.com/pocketbase/pocketbase@{version}`를 실행함.
-        - `version`이 숫자(`0-9`)로 시작하는 경우 `go get -u github.com/pocketbase/pocketbase@v{version}`를 실행함.
+        - `version`이 `v`로 시작하는 경우 `go get -u {pb-module}@{version}`을 실행함.
+        - `version`이 숫자(`0-9`)로 시작하는 경우 `go get -u {pb-module}@v{version}`을 실행함.
         - 그 외 값은 다음 메시지를 stderr로 출력하고 exit=1로 종료함.
             ```
             Unsupported version format. Supported values are:
@@ -198,8 +204,8 @@ Cannot use -h in a short flag bundle.
     Using Go module directory: {module abs path}
     Preparing module directory: {module abs path}
     Initializing Go module: {moduleName}
-    Installing PocketBase SDK: github.com/pocketbase/pocketbase@{pb-version}
-    Installing PocketBase JSVM plugin: github.com/pocketbase/pocketbase/plugins/jsvm@{pb-version}
+    Installing PocketBase SDK: {pb-module}@{pb-version}
+    Installing PocketBase JSVM plugin: {pb-module}/plugins/jsvm@{pb-version}
     Generating PocketBase starter files
     Tidying Go module: go mod tidy
     ```

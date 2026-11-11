@@ -2,11 +2,16 @@ package initcli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -59,7 +64,7 @@ func TestCurrentModuleWithoutGoSumOrGoFilesUsesCurrentDirectory(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
 	runner := &fakeRunner{}
 
-	code, stdout, stderr := runForProject([]string{}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -73,7 +78,8 @@ func TestCurrentModuleWithoutGoSumOrGoFilesUsesCurrentDirectory(t *testing.T) {
 		"PocketBase project initialized successfully:",
 	})
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
@@ -84,7 +90,7 @@ func TestCurrentModuleWithGoSumRequiresForce(t *testing.T) {
 	writeFile(t, dir, "go.sum", "")
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{}, dir, runner)
+	code, _, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -103,7 +109,7 @@ func TestCurrentModuleWithGoFilesRequiresForce(t *testing.T) {
 	writeFile(t, dir, "main.go", "package main\n")
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{}, dir, runner)
+	code, _, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -122,7 +128,7 @@ func TestCurrentModuleWithForcePrintsWarning(t *testing.T) {
 	writeFile(t, dir, "go.sum", "")
 	runner := &fakeRunner{}
 
-	code, stdout, stderr := runForProject([]string{"--force"}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{"--force"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -134,7 +140,8 @@ func TestCurrentModuleWithForcePrintsWarning(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
@@ -143,7 +150,7 @@ func TestMissingModuleNameOutsideGoModuleUsesBuildModulePath(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{}, dir, runner)
+	code, _, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -169,7 +176,7 @@ func TestModuleNameCreatesLastPathDirectoryAndRunsGoModInit(t *testing.T) {
 		return "", nil
 	}
 
-	code, _, stderr := runForProject([]string{"github.com/crmin/test-data"}, dir, runner)
+	code, _, stderr := runForProject(t, []string{"github.com/crmin/test-data"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -177,7 +184,8 @@ func TestModuleNameCreatesLastPathDirectoryAndRunsGoModInit(t *testing.T) {
 	target := filepath.Join(dir, "test-data")
 	assertCalls(t, runner.calls, []commandCall{
 		{dir: target, name: "go", args: []string{"mod", "init", "github.com/crmin/test-data"}},
-		{dir: target, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: target, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: target, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
@@ -189,7 +197,7 @@ func TestModuleNameExistingModuleWithGoSumRequiresForce(t *testing.T) {
 	writeFile(t, target, "go.sum", "")
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{"github.com/crmin/pb-test"}, dir, runner)
+	code, _, stderr := runForProject(t, []string{"github.com/crmin/pb-test"}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -209,7 +217,7 @@ func TestModuleNameExistingModuleWithGoFilesRequiresForce(t *testing.T) {
 	writeFile(t, target, "main.go", "package main\n")
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{"github.com/crmin/pb-test"}, dir, runner)
+	code, _, stderr := runForProject(t, []string{"github.com/crmin/pb-test"}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -229,7 +237,7 @@ func TestModuleNameExistingModuleWithForcePrintsWarningAndSkipsGoModInit(t *test
 	writeFile(t, target, "go.sum", "")
 	runner := &fakeRunner{}
 
-	code, stdout, stderr := runForProject([]string{"github.com/crmin/pb-test", "--force"}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{"github.com/crmin/pb-test", "--force"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -243,7 +251,8 @@ func TestModuleNameExistingModuleWithForcePrintsWarningAndSkipsGoModInit(t *test
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: target, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: target, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: target, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
@@ -254,7 +263,7 @@ func TestModuleNameExistingEmptyModuleSkipsGoModInit(t *testing.T) {
 	writeFile(t, target, "go.mod", "module github.com/crmin/pb-test\n\ngo 1.20\n")
 	runner := &fakeRunner{}
 
-	code, stdout, stderr := runForProject([]string{"github.com/crmin/pb-test"}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{"github.com/crmin/pb-test"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -266,7 +275,8 @@ func TestModuleNameExistingEmptyModuleSkipsGoModInit(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: target, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@latest"}},
+		{dir: target, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: target, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
 		{dir: target, name: "go", args: []string{"mod", "tidy"}},
 	})
 }
@@ -275,7 +285,7 @@ func TestGoModInitFailureWritesCommandOutputToStderr(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{output: "go mod init failed\n", err: errors.New("exit status 1")}
 
-	code, stdout, stderr := runForProject([]string{"example.com/app"}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{"example.com/app"}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -293,7 +303,7 @@ func TestGoGetFailureWritesCommandOutputToStderr(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
 	runner := &fakeRunner{output: "go get failed\n", err: errors.New("exit status 1")}
 
-	code, stdout, stderr := runForProject([]string{}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -311,15 +321,210 @@ func TestJSVMRunsPluginGoGetForTransitiveDependencies(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{"--jsvm", "--pb-version=v0.39.5"}, dir, runner)
+	code, _, stderr := runForProject(t, []string{"--jsvm", "--pb-version=latest"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
 	}
 	assertCalls(t, runner.calls, []commandCall{
-		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase@v0.39.5"}},
-		{dir: dir, name: "go", args: []string{"get", "github.com/pocketbase/pocketbase/plugins/jsvm@v0.39.5"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}},
+		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "@v0.42.0"}},
+		{dir: dir, name: "go", args: []string{"get", newPocketBasePath + "/plugins/jsvm@v0.42.0"}},
 		{dir: dir, name: "go", args: []string{"mod", "tidy"}},
+	})
+}
+
+func TestPocketBaseModulePathForVersion(t *testing.T) {
+	for _, tt := range []struct {
+		query   string
+		version string
+		path    string
+	}{
+		{"latest", "v0.42.0", newPocketBasePath},
+		{"v0.39.5", "v0.39.5", oldPocketBasePath},
+		{"v0.40", "v0.40.6", oldPocketBasePath},
+		{"v0.41.0-rc.1", "v0.41.0-rc.1", newPocketBasePath},
+		{"v0.41.0", "v0.41.0", newPocketBasePath},
+	} {
+		t.Run(tt.query, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.20\n")
+			metadata := writePocketBaseMetadata(t, tt.path, tt.version)
+			runner := &fakeRunner{onOutput: func(call commandCall) (string, error) {
+				return metadata, nil
+			}}
+
+			code, _, stderr := runForProject(t, []string{"--jsvm", "--pb-version=" + tt.query}, dir, runner)
+			if code != 0 {
+				t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
+			}
+			assertCalls(t, runner.calls, []commandCall{
+				{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@" + tt.query}},
+				{dir: dir, name: "go", args: []string{"get", tt.path + "@" + tt.version}},
+				{dir: dir, name: "go", args: []string{"get", tt.path + "/plugins/jsvm@" + tt.version}},
+				{dir: dir, name: "go", args: []string{"mod", "tidy"}},
+			})
+			assertContainsAll(t, readFile(t, dir, "main.go"), []string{
+				`"` + tt.path + `"`,
+				`"` + tt.path + `/plugins/jsvm"`,
+				`"` + tt.path + `/plugins/migratecmd"`,
+			})
+		})
+	}
+}
+
+func TestPocketBaseModulePathUsesExistingRequirementForPatchAndUpgrade(t *testing.T) {
+	for _, query := range []string{"patch", "upgrade"} {
+		t.Run(query, func(t *testing.T) {
+			dir := t.TempDir()
+			metadata := writePocketBaseMetadata(t, oldPocketBasePath, "v0.39.11")
+			runner := &fakeRunner{onOutput: func(call commandCall) (string, error) {
+				if call.args[0] == "mod" {
+					return `{"Require":[{"Path":"github.com/pocketbase/pocketbase","Version":"v0.39.5"}]}`, nil
+				}
+				return metadata, nil
+			}}
+
+			path, version, err := resolvePocketBase(dir, query, runner)
+			if err != nil || path != oldPocketBasePath || version != "v0.39.11" {
+				t.Fatalf("resolved %s@%s, err=%v", path, version, err)
+			}
+			assertCalls(t, runner.calls, []commandCall{
+				{dir: dir, name: "go", args: []string{"mod", "edit", "-json"}},
+				{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", oldPocketBasePath + "@" + query}},
+			})
+		})
+	}
+}
+
+func TestPocketBaseModulePathRetriesLegacyRevision(t *testing.T) {
+	dir := t.TempDir()
+	metadata := writePocketBaseMetadata(t, oldPocketBasePath, "v0.39.5")
+	runner := &fakeRunner{onOutput: func(call commandCall) (string, error) {
+		if call.args[len(call.args)-1] == newPocketBasePath+"@legacy-ref" {
+			return "go: " + newPocketBasePath + "@legacy-ref: invalid version: unknown revision legacy-ref\n", errors.New("exit status 1")
+		}
+		return metadata, nil
+	}}
+
+	path, version, err := resolvePocketBase(dir, "legacy-ref", runner)
+	if err != nil || path != oldPocketBasePath || version != "v0.39.5" {
+		t.Fatalf("resolved %s@%s, err=%v", path, version, err)
+	}
+	assertCalls(t, runner.calls, []commandCall{
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@legacy-ref"}},
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", oldPocketBasePath + "@legacy-ref"}},
+	})
+}
+
+func TestPocketBaseLookupWithVendor(t *testing.T) {
+	proxyDir := t.TempDir()
+	const version = "v0.42.0"
+	writeProxyRelease(t, proxyDir, newPocketBasePath, version)
+
+	for _, mode := range []string{"module", "workspace"} {
+		t.Run(mode, func(t *testing.T) {
+			usePocketBaseProxy(t, fileProxyURL(proxyDir))
+			root := t.TempDir()
+			dir := filepath.Join(root, "app")
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.26.1\n")
+			if mode == "workspace" {
+				writeFile(t, root, "go.work", "go 1.26.1\n\nuse ./app\n")
+				writeFile(t, root, "vendor/modules.txt", "## workspace\n")
+				t.Setenv("GOWORK", filepath.Join(root, "go.work"))
+			} else {
+				writeFile(t, dir, "vendor/modules.txt", "")
+			}
+
+			path, gotVersion, err := resolvePocketBase(dir, "latest", execRunner{})
+			if err != nil || path != newPocketBasePath || gotVersion != version {
+				t.Fatalf("resolved %s@%s, err=%v", path, gotVersion, err)
+			}
+		})
+	}
+}
+
+func TestPocketBaseLookupWithFileProxy(t *testing.T) {
+	proxyDir := t.TempDir()
+	const version = "v0.39.5"
+	writeProxyRelease(t, proxyDir, oldPocketBasePath, version)
+
+	for _, query := range []string{version, "v0.39"} {
+		t.Run(query, func(t *testing.T) {
+			usePocketBaseProxy(t, fileProxyURL(proxyDir))
+			dir := t.TempDir()
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.26.1\n")
+
+			path, gotVersion, err := resolvePocketBase(dir, query, execRunner{})
+			if err != nil || path != oldPocketBasePath || gotVersion != version {
+				t.Fatalf("resolved %s@%s, err=%v", path, gotVersion, err)
+			}
+		})
+	}
+}
+
+func TestPocketBaseLookupWithHTTPProxy(t *testing.T) {
+	proxyDir := t.TempDir()
+	const version = "v0.39.5"
+	writeProxyRelease(t, proxyDir, oldPocketBasePath, version)
+	files := http.FileServer(http.Dir(proxyDir))
+
+	for _, tt := range []struct {
+		name     string
+		status   int
+		fallback bool
+	}{
+		{"not found", http.StatusNotFound, true},
+		{"gone", http.StatusGone, true},
+		{"forbidden", http.StatusForbidden, false},
+		{"unavailable", http.StatusServiceUnavailable, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var legacyRequested atomic.Bool
+			proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/"+oldPocketBasePath+"/") {
+					legacyRequested.Store(true)
+					files.ServeHTTP(w, r)
+					return
+				}
+				w.WriteHeader(tt.status)
+				if !tt.fallback {
+					_, _ = w.Write([]byte("upstream 404 Not Found: unknown revision"))
+				}
+			}))
+			defer proxy.Close()
+			usePocketBaseProxy(t, proxy.URL)
+			dir := t.TempDir()
+			writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.26.1\n")
+
+			path, gotVersion, err := resolvePocketBase(dir, version, execRunner{})
+			if tt.fallback {
+				if err != nil || path != oldPocketBasePath || gotVersion != version {
+					t.Fatalf("resolved %s@%s, err=%v", path, gotVersion, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), http.StatusText(tt.status)) {
+				t.Fatalf("expected %s error, got %v", http.StatusText(tt.status), err)
+			}
+			if got := legacyRequested.Load(); got != tt.fallback {
+				t.Fatalf("legacy path requested: %v; want %v", got, tt.fallback)
+			}
+		})
+	}
+}
+
+func TestPocketBaseLookupFailureStopsBeforeInstallation(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/app\n\ngo 1.20\n")
+	runner := &fakeRunner{onOutput: func(call commandCall) (string, error) {
+		return "go: proxy is unavailable\n", errors.New("exit status 1")
+	}}
+
+	code, _, stderr := runForProject(t, []string{"--pb-version=v0.41.0"}, dir, runner)
+	if code != 1 || stderr != "go: proxy is unavailable\n" {
+		t.Fatalf("got exit code %d and stderr %q", code, stderr)
+	}
+	assertCalls(t, runner.calls, []commandCall{
+		{dir: dir, name: "go", args: []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@v0.41.0"}},
 	})
 }
 
@@ -334,7 +539,7 @@ func TestGoModTidyFailureWritesCommandOutputToStderr(t *testing.T) {
 		return "", nil
 	}
 
-	code, stdout, stderr := runForProject([]string{}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
@@ -352,7 +557,7 @@ func TestCurrentModuleSuccessPrintsColoredNextSteps(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
 	runner := &fakeRunner{}
 
-	code, stdout, stderr := runForProject([]string{}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -378,7 +583,7 @@ func TestModuleNameSuccessPrintsCdStepWithRelativePath(t *testing.T) {
 		return "", nil
 	}
 
-	code, stdout, stderr := runForProject([]string{"github.com/crmin/test-data"}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{"github.com/crmin/test-data"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -395,15 +600,15 @@ func TestRunPrintsStepLogsInOrder(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
 	runner := &fakeRunner{}
 
-	code, stdout, stderr := runForProject([]string{"--jsvm", "--pb-version=v0.39.5"}, dir, runner)
+	code, stdout, stderr := runForProject(t, []string{"--jsvm", "--pb-version=latest"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
 	}
 	assertInOrder(t, stdout, []string{
 		"Using Go module directory: " + dir,
-		"Installing PocketBase SDK: github.com/pocketbase/pocketbase@v0.39.5",
-		"Installing PocketBase JSVM plugin: github.com/pocketbase/pocketbase/plugins/jsvm@v0.39.5",
+		"Installing PocketBase SDK: " + newPocketBasePath + "@v0.42.0",
+		"Installing PocketBase JSVM plugin: " + newPocketBasePath + "/plugins/jsvm@v0.42.0",
 		"Generating PocketBase starter files",
 		"Tidying Go module: go mod tidy",
 		"PocketBase project initialized successfully:",
@@ -415,7 +620,7 @@ func TestRecommendGeneratesJustfileAndDockerignoreEntry(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/current\n\ngo 1.20\n")
 	runner := &fakeRunner{}
 
-	code, _, stderr := runForProject([]string{"--recommend"}, dir, runner)
+	code, _, stderr := runForProject(t, []string{"--recommend"}, dir, runner)
 
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr=%q", code, stderr)
@@ -430,7 +635,22 @@ func TestRecommendGeneratesJustfileAndDockerignoreEntry(t *testing.T) {
 	}
 }
 
-func runForProject(args []string, dir string, runner *fakeRunner) (int, string, string) {
+const (
+	newPocketBasePath = "ganigeorgiev.com/pocketbase/pocketbase"
+	oldPocketBasePath = "github.com/pocketbase/pocketbase"
+)
+
+func runForProject(t *testing.T, args []string, dir string, runner *fakeRunner) (int, string, string) {
+	t.Helper()
+	if runner.onOutput == nil {
+		metadata := writePocketBaseMetadata(t, newPocketBasePath, "v0.42.0")
+		runner.onOutput = func(call commandCall) (string, error) {
+			if !reflect.DeepEqual(call.args, []string{"list", "-mod=readonly", "-m", "-json", newPocketBasePath + "@latest"}) {
+				t.Fatalf("unexpected output command: %#v", call)
+			}
+			return metadata, nil
+		}
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := Run(args, Env{
@@ -451,10 +671,11 @@ type commandCall struct {
 }
 
 type fakeRunner struct {
-	calls  []commandCall
-	output string
-	err    error
-	onRun  func(commandCall) (string, error)
+	calls    []commandCall
+	output   string
+	err      error
+	onRun    func(commandCall) (string, error)
+	onOutput func(commandCall) (string, error)
 }
 
 func (r *fakeRunner) Run(dir string, name string, args ...string) (string, error) {
@@ -464,6 +685,49 @@ func (r *fakeRunner) Run(dir string, name string, args ...string) (string, error
 		return r.onRun(call)
 	}
 	return r.output, r.err
+}
+
+func (r *fakeRunner) Output(dir string, name string, args ...string) (string, error) {
+	call := commandCall{dir: dir, name: name, args: append([]string(nil), args...)}
+	r.calls = append(r.calls, call)
+	return r.onOutput(call)
+}
+
+func writePocketBaseMetadata(t *testing.T, modulePath string, version string) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module "+modulePath+"\n")
+	metadata, err := json.Marshal(map[string]string{
+		"Version": version,
+		"GoMod":   filepath.Join(dir, "go.mod"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(metadata)
+}
+
+func writeProxyRelease(t *testing.T, dir string, modulePath string, version string) {
+	t.Helper()
+	metadata := `{"Version":"` + version + `","Time":"2026-10-26T00:00:00Z"}`
+	writeFile(t, dir, modulePath+"/@latest", metadata)
+	writeFile(t, dir, modulePath+"/@v/list", version+"\n")
+	writeFile(t, dir, modulePath+"/@v/"+version+".info", metadata)
+	writeFile(t, dir, modulePath+"/@v/"+version+".mod", "module "+modulePath+"\n\ngo 1.26.1\n")
+}
+
+func fileProxyURL(dir string) string {
+	return (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(dir), "/")}).String()
+}
+
+func usePocketBaseProxy(t *testing.T, proxy string) {
+	t.Helper()
+	t.Setenv("GOPROXY", proxy)
+	t.Setenv("GONOPROXY", "none")
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOMODCACHE", t.TempDir())
+	t.Setenv("GOFLAGS", "")
+	t.Setenv("GOWORK", "off")
 }
 
 func assertCalls(t *testing.T, got []commandCall, want []commandCall) {

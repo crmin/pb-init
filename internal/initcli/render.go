@@ -70,6 +70,7 @@ func RenderProject(project Project, cfg Config, templates fs.FS) error {
 
 type renderData struct {
 	ModulePath       string
+	PocketBaseModule string
 	MigrationDir     string
 	MigrationPackage string
 	JSVMImport       bool
@@ -83,6 +84,7 @@ type renderData struct {
 func templateData(project Project, cfg Config) renderData {
 	return renderData{
 		ModulePath:       project.ModulePath,
+		PocketBaseModule: project.PocketBaseModule,
 		MigrationDir:     cfg.MigrationDir,
 		MigrationPackage: migrationPackageName(cfg.MigrationDir),
 		JSVMImport:       cfg.JSVM,

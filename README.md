@@ -79,15 +79,11 @@ Default: `migrations`
 
 `--pb-version=<version>`
 
-PocketBase SDK version passed to:
+PocketBase SDK 버전 또는 Go 버전 쿼리를 지정합니다. 기본값은 `latest`입니다.
 
-```sh
-go get github.com/pocketbase/pocketbase@<version>
-```
+`latest`를 지정하면 `ganigeorgiev.com/pocketbase/pocketbase`에서 버전을 조회합니다. `v0.39.5`처럼 GitHub 경로를 선언한 버전은 `github.com/pocketbase/pocketbase`에서 설치합니다. 기존 프로젝트에서 `patch` 또는 `upgrade`를 지정하면 현재 PocketBase 의존성의 경로를 사용합니다. `none`은 사용할 수 없습니다.
 
-Default: `latest`
-
-The value `none` is not allowed. Omit `--pb-version` to use `latest`.
+`--force`로 기존 프로젝트를 새 경로로 전환하려면 기존 Go 코드와 마이그레이션의 PocketBase import도 바꿔야 합니다. GitHub 경로로 등록한 마이그레이션은 그 경로의 PocketBase 앱에서만 실행됩니다. 기존 import를 유지하려면 GitHub 경로를 선언한 버전을 지정합니다.
 
 ## Flags
 
@@ -197,7 +193,9 @@ Create a collection snapshot with `go run . migrate collections` and keep only t
 
 `just upgrade [version]`
 
-Upgrade the PocketBase Go dependency. Use no version, `latest`, a version like `0.39.5`, or a `v`-prefixed version like `v0.39.5`.
+프로젝트를 생성할 때 선택한 모듈 경로에서 PocketBase를 업그레이드합니다. 버전을 생략하거나 `latest`, `0.41.0`, `v0.41.0`처럼 해당 경로의 버전을 지정할 수 있습니다.
+
+기존 GitHub 경로에서 새 경로로 전환하려면 Go import와 `go.mod`의 PocketBase 의존성을 함께 바꿉니다. `justfile`을 사용한다면 `upgrade`가 참조하는 경로도 바꿉니다.
 
 ## Examples
 

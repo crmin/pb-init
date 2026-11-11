@@ -1,6 +1,7 @@
 package initcli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -50,6 +51,8 @@ type Env struct {
 // CommandRunner runs external commands in a target directory.
 type CommandRunner interface {
 	Run(dir string, name string, args ...string) (string, error)
+	// Output returns stdout on success and prefers stderr on failure.
+	Output(dir string, name string, args ...string) (string, error)
 }
 
 // UsageError is an error that should be printed with the help message.
@@ -196,7 +199,8 @@ Options:
   --migration-dir=<dirName>
     Directory for generated Go migration files that are compiled into the Go build. The value may be nested, for example `+"`internal/migrations`"+`, but it must be a child path relative to the PocketBase project module directory: absolute paths, current directory references (`+"`.`"+`), and parent directory references (`+"`..`"+`) are rejected. When `+"`--jsvm`"+` is used, this option still only controls Go migrations; JavaScript migrations remain in `+"`pb_migrations`"+` and JavaScript hooks remain in `+"`pb_hooks`"+`. Default: migrations
   --pb-version=<version>
-    PocketBase SDK version passed to `+"`go get github.com/pocketbase/pocketbase@<version>`"+`. Default: latest
+    PocketBase SDK version or Go version query. Default: latest.
+    Releases on the new module path use `+"`go get %s@<version>`"+`. Older releases use their original module path.
 
 Flags:
   -h, --help
@@ -215,7 +219,7 @@ Flags:
     Generate a justfile with common PocketBase project commands.
   -r, --recommend
     Equivalent to --docker --auto-migration --just.
-`, command)
+`, command, pocketBaseModule)
 }
 
 func parseLongFlag(args []string, index int, cfg *Config) (int, error) {
@@ -374,6 +378,18 @@ func (execRunner) Run(dir string, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+func (execRunner) Output(dir string, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil && stderr.Len() != 0 {
+		return stderr.String(), err
+	}
 	return string(output), err
 }
 

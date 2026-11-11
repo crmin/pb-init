@@ -19,7 +19,9 @@ func TestRenderMainTemplateUsesModulePathMigrationDirJSVMAndAutoMigration(t *tes
 	mainGo := readFile(t, dir, "main.go")
 	for _, want := range []string{
 		`_ "example.com/app/internal/migrations"`,
-		`"github.com/pocketbase/pocketbase/plugins/jsvm"`,
+		`"ganigeorgiev.com/pocketbase/pocketbase"`,
+		`"ganigeorgiev.com/pocketbase/pocketbase/plugins/jsvm"`,
+		`"ganigeorgiev.com/pocketbase/pocketbase/plugins/migratecmd"`,
 		`Automigrate: true`,
 		`jsvm.MustRegister(app, jsvm.Config{})`,
 	} {
@@ -84,6 +86,10 @@ func TestRenderCreatesJSVMAssetDirectoriesWhenJSVMEnabled(t *testing.T) {
 
 func TestRenderSkipsJSVMAssetDirectoriesWhenJSVMDisabled(t *testing.T) {
 	dir := renderFixture(t, Config{MigrationDir: defaultMigrationDir})
+	mainGo := readFile(t, dir, "main.go")
+	if strings.Contains(mainGo, "/plugins/jsvm") {
+		t.Fatalf("main.go imports JSVM when disabled:\n%s", mainGo)
+	}
 
 	for _, name := range []string{"pb_migrations", "pb_hooks"} {
 		_, err := os.Stat(filepath.Join(dir, name))
@@ -129,7 +135,7 @@ func TestRenderDockerfileOmitsJSVMAssetDirectoriesWhenJSVMDisabled(t *testing.T)
 func TestRenderBinaryNamePocketBaseIsOmitted(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{MigrationDir: defaultMigrationDir, Docker: true}
-	err := RenderProject(Project{Dir: dir, ModulePath: "example.com/pocketbase"}, cfg, testTemplateFS())
+	err := RenderProject(Project{Dir: dir, ModulePath: "example.com/pocketbase", PocketBaseModule: newPocketBasePath}, cfg, testTemplateFS())
 	if err != nil {
 		t.Fatalf("RenderProject returned error: %v", err)
 	}
@@ -263,13 +269,56 @@ func TestRenderedJustfileSyntaxSupportsDryRun(t *testing.T) {
 		{"--dry-run", "serve", "--", "--http", "127.0.0.1:8090"},
 		{"--dry-run", "migrate", "--", "--dir", "custom migrations"},
 		{"--dry-run", "snapshot", "--", "-y", "--", "--flag", "value with spaces"},
-		{"--dry-run", "upgrade", "v0.39.5"},
+		{"--dry-run", "upgrade", "v0.41.0"},
 	} {
 		fullArgs := append([]string{"--justfile", filepath.Join(dir, "justfile"), "--working-directory", dir}, args...)
 		cmd := exec.Command("just", fullArgs...)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("just dry-run %#v failed: %v\n%s", args, err, output)
 		}
+	}
+}
+
+func TestRenderedJustfileUpgradeUsesPocketBaseModulePath(t *testing.T) {
+	just, err := exec.LookPath("just")
+	if err != nil {
+		t.Skip("just is not installed")
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	for _, module := range []struct{ name, path, version string }{
+		{"current", newPocketBasePath, "0.41.0"},
+		{"legacy", oldPocketBasePath, "0.39.5"},
+	} {
+		t.Run(module.name, func(t *testing.T) {
+			dir := t.TempDir()
+			project := Project{Dir: dir, ModulePath: "example.com/app", PocketBaseModule: module.path}
+			if err := RenderProject(project, Config{MigrationDir: defaultMigrationDir, Just: true}, testTemplateFS()); err != nil {
+				t.Fatal(err)
+			}
+			for _, tt := range []struct{ version, suffix string }{
+				{"", ""},
+				{"latest", "@latest"},
+				{module.version, "@v" + module.version},
+				{"v" + module.version, "@v" + module.version},
+			} {
+				args := []string{"upgrade"}
+				if tt.version != "" {
+					args = append(args, tt.version)
+				}
+				cmd := exec.Command(just, args...)
+				cmd.Dir = dir
+				output, err := cmd.CombinedOutput()
+				want := "get -u " + module.path + tt.suffix + "\n"
+				if err != nil || string(output) != want {
+					t.Fatalf("just %v got %q, err=%v; want %q", args, output, err, want)
+				}
+			}
+		})
 	}
 }
 
@@ -289,7 +338,7 @@ func renderFixture(t *testing.T, cfg Config) string {
 		cfg.MigrationDir = defaultMigrationDir
 	}
 
-	err := RenderProject(Project{Dir: dir, ModulePath: "example.com/app"}, cfg, testTemplateFS())
+	err := RenderProject(Project{Dir: dir, ModulePath: "example.com/app", PocketBaseModule: newPocketBasePath}, cfg, testTemplateFS())
 	if err != nil {
 		t.Fatalf("RenderProject returned error: %v", err)
 	}

@@ -113,23 +113,24 @@ upgrade version="":
     set -euo pipefail
 
     version="$1"
+    pocketbase_module="{{.PocketBaseModule}}"
 
     case "$version" in
         "")
-            go get -u github.com/pocketbase/pocketbase
+            go get -u "$pocketbase_module"
             ;;
         latest)
-            go get -u github.com/pocketbase/pocketbase@latest
+            go get -u "$pocketbase_module@latest"
             ;;
         none)
             printf 'Invalid version: "none" is not allowed.\n' >&2
             exit 1
             ;;
         v*)
-            go get -u "github.com/pocketbase/pocketbase@$version"
+            go get -u "$pocketbase_module@$version"
             ;;
         [0-9]*)
-            go get -u "github.com/pocketbase/pocketbase@v$version"
+            go get -u "$pocketbase_module@v$version"
             ;;
         *)
             printf 'Unsupported version format. Supported values are:\n' >&2

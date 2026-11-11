@@ -2,6 +2,8 @@ package initcli
 
 import (
 	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +14,9 @@ import (
 )
 
 const (
+	pocketBaseModule       = "ganigeorgiev.com/pocketbase/pocketbase"
+	legacyPocketBaseModule = "github.com/pocketbase/pocketbase"
+
 	forceRequiredMessage = "This directory is already initialized as a Go module. To initialize the current directory as a PocketBase project, run the command again with the `--force` flag.\n**Warning**: This may overwrite or damage your existing project.\n"
 	forceProceedMessage  = "This directory is already initialized as a Go module. Since the `--force` flag was provided, PocketBase project initialization will proceed.\nWarning: Existing project files may be overwritten or corrupted.\n"
 )
@@ -20,10 +25,11 @@ var goVersionLinePattern = regexp.MustCompile(`^go \d+\.\d+(?:\.\d+)?$`)
 
 // Project describes the target PocketBase project module.
 type Project struct {
-	Dir            string
-	RelativeDir    string
-	ModulePath     string
-	FromModuleName bool
+	Dir              string
+	RelativeDir      string
+	ModulePath       string
+	PocketBaseModule string
+	FromModuleName   bool
 }
 
 // ProjectEnv contains dependencies for project preparation.
@@ -63,24 +69,159 @@ func PrepareProject(cfg Config, env ProjectEnv) (Project, error) {
 		return Project{}, err
 	}
 
-	logStep(env.Stdout, "Installing PocketBase SDK: github.com/pocketbase/pocketbase@%s", cfg.PBVersion)
-	if err := runGoGet(project.Dir, cfg.PBVersion, env.Runner); err != nil {
+	modulePath, version, err := resolvePocketBase(project.Dir, cfg.PBVersion, env.Runner)
+	if err != nil {
+		return Project{}, err
+	}
+	project.PocketBaseModule = modulePath
+
+	logStep(env.Stdout, "Installing PocketBase SDK: %s@%s", modulePath, version)
+	if err := runGoGetPackage(project.Dir, modulePath, version, env.Runner); err != nil {
 		return Project{}, err
 	}
 	if cfg.JSVM {
-		logStep(env.Stdout, "Installing PocketBase JSVM plugin: github.com/pocketbase/pocketbase/plugins/jsvm@%s", cfg.PBVersion)
-		if err := runGoGetPackage(project.Dir, "github.com/pocketbase/pocketbase/plugins/jsvm", cfg.PBVersion, env.Runner); err != nil {
+		jsvmPackage := modulePath + "/plugins/jsvm"
+		logStep(env.Stdout, "Installing PocketBase JSVM plugin: %s@%s", jsvmPackage, version)
+		if err := runGoGetPackage(project.Dir, jsvmPackage, version, env.Runner); err != nil {
 			return Project{}, err
 		}
 	}
 
-	modulePath, err := ReadModulePath(project.Dir)
+	project.ModulePath, err = ReadModulePath(project.Dir)
 	if err != nil {
 		return Project{}, err
 	}
-	project.ModulePath = modulePath
-
 	return project, nil
+}
+
+type moduleVersion struct {
+	Version string
+	GoMod   string
+}
+
+func resolvePocketBase(dir string, query string, runner CommandRunner) (string, string, error) {
+	queryPath := pocketBaseModule
+	tryLegacy := false
+	switch query {
+	case defaultPBVersion:
+	case "patch", "upgrade":
+		path, err := currentPocketBaseModule(dir, runner)
+		if err != nil {
+			return "", "", err
+		}
+		queryPath = path
+	default:
+		tryLegacy = true
+	}
+
+	release, err := queryModuleVersion(dir, queryPath, query, runner)
+	if tryLegacy && versionNotFound(err, queryPath) {
+		legacyRelease, legacyErr := queryModuleVersion(dir, legacyPocketBaseModule, query, runner)
+		if legacyErr != nil {
+			return "", "", errors.Join(err, legacyErr)
+		}
+		release, err = legacyRelease, nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	if release.Version == "" || release.GoMod == "" {
+		return "", "", fmt.Errorf("missing PocketBase version or go.mod for %q", query)
+	}
+
+	// go list reports the queried path, even when go.mod declares the older path.
+	modulePath, err := readModulePath(release.GoMod)
+	if err != nil {
+		return "", "", fmt.Errorf("read PocketBase module path for %s: %w", release.Version, err)
+	}
+	if modulePath != pocketBaseModule && (modulePath != legacyPocketBaseModule || query == defaultPBVersion) {
+		return "", "", fmt.Errorf("unexpected PocketBase module path %q for %s", modulePath, release.Version)
+	}
+	return modulePath, release.Version, nil
+}
+
+func queryModuleVersion(dir string, modulePath string, query string, runner CommandRunner) (moduleVersion, error) {
+	var release moduleVersion
+	// Module queries need metadata outside vendor, including in Go workspaces.
+	err := readGoJSON(dir, runner, &release, "list", "-mod=readonly", "-m", "-json", modulePath+"@"+query)
+	return release, err
+}
+
+func currentPocketBaseModule(dir string, runner CommandRunner) (string, error) {
+	var mod struct {
+		Require []struct{ Path string }
+	}
+	if err := readGoJSON(dir, runner, &mod, "mod", "edit", "-json"); err != nil {
+		return "", err
+	}
+	modulePath := pocketBaseModule
+	for _, req := range mod.Require {
+		switch req.Path {
+		case pocketBaseModule:
+			return pocketBaseModule, nil
+		case legacyPocketBaseModule:
+			modulePath = legacyPocketBaseModule
+		}
+	}
+	return modulePath, nil
+}
+
+func versionNotFound(err error, modulePath string) bool {
+	var commandErr *CommandError
+	if !errors.As(err, &commandErr) {
+		return false
+	}
+	for _, line := range strings.Split(commandErr.Output, "\n") {
+		diagnostic, ok := strings.CutPrefix(line, "go: ")
+		if !ok {
+			continue
+		}
+		target, detail, ok := strings.Cut(strings.TrimPrefix(diagnostic, "module "), ": ")
+		if !ok || (target != modulePath && !strings.HasPrefix(target, modulePath+"@")) {
+			continue
+		}
+		// Check the Go diagnostic itself. The proxy's response body can contain
+		// arbitrary text even when the status is a permission or server error.
+		detail = strings.TrimPrefix(detail, "invalid version: ")
+		detail = strings.TrimPrefix(detail, "invalid pseudo-version: ")
+		return strings.HasPrefix(detail, "unknown revision ") ||
+			strings.HasPrefix(detail, "no matching versions for query ") ||
+			proxyVersionNotFound(detail, modulePath)
+	}
+	return false
+}
+
+func proxyVersionNotFound(detail string, modulePath string) bool {
+	request, ok := strings.CutPrefix(detail, "reading ")
+	if !ok {
+		return false
+	}
+	address, reason, ok := strings.Cut(request, ": ")
+	if !ok || !strings.Contains(address, "/"+modulePath+"/@v/") {
+		return false
+	}
+	if strings.HasPrefix(address, "file://") {
+		switch reason {
+		case "no such file or directory", "The system cannot find the file specified.", "The system cannot find the path specified.":
+			return true
+		}
+	}
+	if strings.HasPrefix(address, "https://") || strings.HasPrefix(address, "http://") {
+		status, _, _ := strings.Cut(reason, " ")
+		return status == "404" || status == "410"
+	}
+	return false
+}
+
+func readGoJSON(dir string, runner CommandRunner, dst any, args ...string) error {
+	output, err := runner.Output(dir, "go", args...)
+	if err != nil {
+		return newCommandError(output, err)
+	}
+	if err := json.Unmarshal([]byte(output), dst); err != nil {
+		return fmt.Errorf("decode go %s output: %w", strings.Join(args, " "), err)
+	}
+	return nil
 }
 
 // IsGoModule checks the repository-local Go module contract from SPEC.md.
@@ -109,7 +250,11 @@ func IsGoModule(dir string) (bool, error) {
 
 // ReadModulePath reads the module path from go.mod.
 func ReadModulePath(dir string) (string, error) {
-	file, err := os.Open(filepath.Join(dir, "go.mod"))
+	return readModulePath(filepath.Join(dir, "go.mod"))
+}
+
+func readModulePath(filename string) (string, error) {
+	file, err := os.Open(filename)
 	if err != nil {
 		return "", err
 	}
@@ -221,10 +366,6 @@ func currentModuleRequiresForce(dir string) (bool, error) {
 	return len(goFiles) > 0, nil
 }
 
-func runGoGet(dir string, version string, runner CommandRunner) error {
-	return runGoGetPackage(dir, "github.com/pocketbase/pocketbase", version, runner)
-}
-
 func runGoGetPackage(dir string, pkg string, version string, runner CommandRunner) error {
 	return runCommand(dir, runner, "go", "get", pkg+"@"+version)
 }
@@ -238,6 +379,10 @@ func runCommand(dir string, runner CommandRunner, name string, args ...string) e
 	if err == nil {
 		return nil
 	}
+	return newCommandError(output, err)
+}
+
+func newCommandError(output string, err error) *CommandError {
 	if output == "" {
 		output = err.Error() + "\n"
 	}
